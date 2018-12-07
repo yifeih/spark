@@ -19,6 +19,6 @@ package org.apache.spark.shuffle.api;
 
 public interface ShuffleReadSupport {
 
-  ShufflePartitionReader newPartitionReader(String appId, int shuffleId, int mapId);
+  ShufflePartitionReader newPartitionReader(String appId, int shuffleId);
 
 }

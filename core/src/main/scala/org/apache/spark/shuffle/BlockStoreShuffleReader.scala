@@ -20,7 +20,8 @@ package org.apache.spark.shuffle
 import org.apache.spark._
 import org.apache.spark.internal.{config, Logging}
 import org.apache.spark.serializer.SerializerManager
-import org.apache.spark.storage.{BlockManager, ShuffleBlockFetcherIterator}
+import org.apache.spark.shuffle.api.ShuffleReadSupport
+import org.apache.spark.storage._
 import org.apache.spark.util.CompletionIterator
 import org.apache.spark.util.collection.ExternalSorter
 
@@ -30,32 +31,53 @@ import org.apache.spark.util.collection.ExternalSorter
  */
 private[spark] class BlockStoreShuffleReader[K, C](
     handle: BaseShuffleHandle[K, _, C],
+    appId: String,
     startPartition: Int,
     endPartition: Int,
     context: TaskContext,
     readMetrics: ShuffleReadMetricsReporter,
     serializerManager: SerializerManager = SparkEnv.get.serializerManager,
     blockManager: BlockManager = SparkEnv.get.blockManager,
-    mapOutputTracker: MapOutputTracker = SparkEnv.get.mapOutputTracker)
+    mapOutputTracker: MapOutputTracker = SparkEnv.get.mapOutputTracker,
+    pluggableReader: ShuffleReadSupport = null) // TODO initialize
   extends ShuffleReader[K, C] with Logging {
 
   private val dep = handle.dependency
 
   /** Read the combined key-values for this reduce task */
   override def read(): Iterator[Product2[K, C]] = {
-    val wrappedStreams = new ShuffleBlockFetcherIterator(
-      context,
-      blockManager.shuffleClient,
-      blockManager,
-      mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition),
-      serializerManager.wrapStream,
-      // Note: we use getSizeAsMb when no suffix is provided for backwards compatibility
-      SparkEnv.get.conf.getSizeAsMb("spark.reducer.maxSizeInFlight", "48m") * 1024 * 1024,
-      SparkEnv.get.conf.getInt("spark.reducer.maxReqsInFlight", Int.MaxValue),
-      SparkEnv.get.conf.get(config.REDUCER_MAX_BLOCKS_IN_FLIGHT_PER_ADDRESS),
-      SparkEnv.get.conf.get(config.MAX_REMOTE_BLOCK_SIZE_FETCH_TO_MEM),
-      SparkEnv.get.conf.getBoolean("spark.shuffle.detectCorrupt", true),
-      readMetrics)
+    val mapSizesByExecId =
+      mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition)
+    val wrappedStreams = if (pluggableReader != null) {
+      val readerForShuffle = pluggableReader.newPartitionReader(appId, handle.shuffleId)
+      mapSizesByExecId
+        .flatMap { case (_, sizes) =>
+          sizes.map { case (blockId, _) =>
+            val (mapId, reduceId) = blockId match {
+              case ShuffleBlockId(_, blockMapId, blockReduceId) => (blockMapId, blockReduceId)
+              case ShuffleDataBlockId(_, blockMapId, blockReduceId) => (blockMapId, blockReduceId)
+              case _ =>
+                throw new IllegalArgumentException(
+                  s"Block id is not a valid shuffle block id: $blockId")
+            }
+            (blockId, readerForShuffle.fetchPartition(mapId, reduceId))
+          }
+        }
+    } else {
+      new ShuffleBlockFetcherIterator(
+        context,
+        blockManager.shuffleClient,
+        blockManager,
+        mapSizesByExecId,
+        serializerManager.wrapStream,
+        // Note: we use getSizeAsMb when no suffix is provided for backwards compatibility
+        SparkEnv.get.conf.getSizeAsMb("spark.reducer.maxSizeInFlight", "48m") * 1024 * 1024,
+        SparkEnv.get.conf.getInt("spark.reducer.maxReqsInFlight", Int.MaxValue),
+        SparkEnv.get.conf.get(config.REDUCER_MAX_BLOCKS_IN_FLIGHT_PER_ADDRESS),
+        SparkEnv.get.conf.get(config.MAX_REMOTE_BLOCK_SIZE_FETCH_TO_MEM),
+        SparkEnv.get.conf.getBoolean("spark.shuffle.detectCorrupt", true),
+        readMetrics)
+    }
 
     val serializerInstance = dep.serializer.newInstance()
 

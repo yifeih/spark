@@ -130,9 +130,9 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     final int numPartitions = handle.dependency().partitioner().numPartitions();
     if (numPartitions > SortShuffleManager.MAX_SHUFFLE_OUTPUT_PARTITIONS_FOR_SERIALIZED_MODE()) {
       throw new IllegalArgumentException(
-          "UnsafeShuffleWriter can only be used for shuffles with at most " +
-              SortShuffleManager.MAX_SHUFFLE_OUTPUT_PARTITIONS_FOR_SERIALIZED_MODE() +
-              " reduce partitions");
+        "UnsafeShuffleWriter can only be used for shuffles with at most " +
+        SortShuffleManager.MAX_SHUFFLE_OUTPUT_PARTITIONS_FOR_SERIALIZED_MODE() +
+        " reduce partitions");
     }
     this.blockManager = blockManager;
     this.shuffleBlockResolver = shuffleBlockResolver;
@@ -149,9 +149,9 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     this.initialSortBufferSize = sparkConf.getInt("spark.shuffle.sort.initialBufferSize",
         DEFAULT_INITIAL_SORT_BUFFER_SIZE);
     this.inputBufferSizeInBytes =
-        (int) (long) sparkConf.get(package$.MODULE$.SHUFFLE_FILE_BUFFER_SIZE()) * 1024;
+      (int) (long) sparkConf.get(package$.MODULE$.SHUFFLE_FILE_BUFFER_SIZE()) * 1024;
     this.outputBufferSizeInBytes =
-        (int) (long) sparkConf.get(package$.MODULE$.SHUFFLE_UNSAFE_FILE_OUTPUT_BUFFER_SIZE()) * 1024;
+      (int) (long) sparkConf.get(package$.MODULE$.SHUFFLE_UNSAFE_FILE_OUTPUT_BUFFER_SIZE()) * 1024;
     open();
   }
 
@@ -214,13 +214,13 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   private void open() {
     assert (sorter == null);
     sorter = new ShuffleExternalSorter(
-        memoryManager,
-        blockManager,
-        taskContext,
-        initialSortBufferSize,
-        partitioner.numPartitions(),
-        sparkConf,
-        writeMetrics);
+      memoryManager,
+      blockManager,
+      taskContext,
+      initialSortBufferSize,
+      partitioner.numPartitions(),
+      sparkConf,
+      writeMetrics);
     serBuffer = new MyByteArrayOutputStream(DEFAULT_INITIAL_SER_BUFFER_SIZE);
     serOutputStream = serializer.serializeStream(serBuffer);
   }
@@ -269,7 +269,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     assert (serializedRecordSize > 0);
 
     sorter.insertRecord(
-        serBuffer.getBuf(), Platform.BYTE_ARRAY_OFFSET, serializedRecordSize, partitionId);
+      serBuffer.getBuf(), Platform.BYTE_ARRAY_OFFSET, serializedRecordSize, partitionId);
   }
 
   @VisibleForTesting
@@ -288,9 +288,9 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     final boolean compressionEnabled = sparkConf.getBoolean("spark.shuffle.compress", true);
     final CompressionCodec compressionCodec = CompressionCodec$.MODULE$.createCodec(sparkConf);
     final boolean fastMergeEnabled =
-        sparkConf.getBoolean("spark.shuffle.unsafe.fastMergeEnabled", true);
+      sparkConf.getBoolean("spark.shuffle.unsafe.fastMergeEnabled", true);
     final boolean fastMergeIsSupported = !compressionEnabled ||
-        CompressionCodec$.MODULE$.supportsConcatenationOfSerializedStreams(compressionCodec);
+      CompressionCodec$.MODULE$.supportsConcatenationOfSerializedStreams(compressionCodec);
     final boolean encryptionEnabled = blockManager.serializerManager().encryptionEnabled();
     try {
       if (spills.length == 0) {
@@ -394,7 +394,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         // the higher level streams to make sure all data is really flushed and internal state is
         // cleaned.
         OutputStream partitionOutput = new CloseAndFlushShieldOutputStream(
-            new TimeTrackingOutputStream(writeMetrics, mergedFileOutputStream));
+          new TimeTrackingOutputStream(writeMetrics, mergedFileOutputStream));
         partitionOutput = blockManager.serializerManager().wrapForEncryption(partitionOutput);
         if (compressionCodec != null) {
           partitionOutput = compressionCodec.compressedOutputStream(partitionOutput);
@@ -406,7 +406,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
                 partitionLengthInSpill, false);
             try {
               partitionInputStream = blockManager.serializerManager().wrapForEncryption(
-                  partitionInputStream);
+                partitionInputStream);
               if (compressionCodec != null) {
                 partitionInputStream = compressionCodec.compressedInputStream(partitionInputStream);
               }
@@ -463,10 +463,10 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           final FileChannel spillInputChannel = spillInputChannels[i];
           final long writeStartTime = System.nanoTime();
           Utils.copyFileStreamNIO(
-              spillInputChannel,
-              mergedFileOutputChannel,
-              spillInputChannelPositions[i],
-              partitionLengthInSpill);
+            spillInputChannel,
+            mergedFileOutputChannel,
+            spillInputChannelPositions[i],
+            partitionLengthInSpill);
           spillInputChannelPositions[i] += partitionLengthInSpill;
           writeMetrics.incWriteTime(System.nanoTime() - writeStartTime);
           bytesWrittenToMergedFile += partitionLengthInSpill;
@@ -479,11 +479,11 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       // https://bugs.openjdk.java.net/browse/JDK-7052359 and SPARK-3948.
       if (mergedFileOutputChannel.position() != bytesWrittenToMergedFile) {
         throw new IOException(
-            "Current position " + mergedFileOutputChannel.position() + " does not equal expected " +
-                "position " + bytesWrittenToMergedFile + " after transferTo. Please check your kernel" +
-                " version to see if it is 2.6.32, as there is a kernel bug which will lead to " +
-                "unexpected behavior when using transferTo. You can set spark.file.transferTo=false " +
-                "to disable this NIO feature."
+          "Current position " + mergedFileOutputChannel.position() + " does not equal expected " +
+            "position " + bytesWrittenToMergedFile + " after transferTo. Please check your kernel" +
+            " version to see if it is 2.6.32, as there is a kernel bug which will lead to " +
+            "unexpected behavior when using transferTo. You can set spark.file.transferTo=false " +
+            "to disable this NIO feature."
         );
       }
       threwException = false;
