@@ -441,6 +441,13 @@ package object config {
       .booleanConf
       .createWithDefault(false)
 
+  private[spark] val SHUFFLE_IO_PLUGIN_CLASS =
+    ConfigBuilder("spark.shuffle.io.plugin.class")
+      .doc("Experimental. Specify a class that can handle reading and writing shuffle blocks to" +
+        " other storage locations, instead of storing the shuffle blocks on local disks.")
+      .stringConf
+      .createOptional
+
   private[spark] val SHUFFLE_ACCURATE_BLOCK_THRESHOLD =
     ConfigBuilder("spark.shuffle.accurateBlockThreshold")
       .doc("Threshold in bytes above which the size of shuffle blocks in " +

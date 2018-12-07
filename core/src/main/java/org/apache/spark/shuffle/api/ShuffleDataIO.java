@@ -18,6 +18,8 @@ package org.apache.spark.shuffle.api;
 
 public interface ShuffleDataIO {
 
+  void initialize();
+
   ShuffleReadSupport readSupport();
 
   ShuffleWriteSupport writeSupport();
