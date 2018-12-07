@@ -19,5 +19,5 @@ package org.apache.spark.shuffle.api;
 
 public interface ShuffleWriteSupport {
 
-  ShufflePartitionWriter newPartitionWriter(String appId, int shuffleId, int mapId);
+  ShufflePartitionWriter newPartitionWriter(String appId, int shuffleId, int mapId, int partitionId);
 }

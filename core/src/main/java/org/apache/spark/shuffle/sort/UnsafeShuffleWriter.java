@@ -514,15 +514,16 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     final InputStream[] spillInputStreams = new InputStream[spills.length];
 
     boolean threwException = true;
-    try (ShufflePartitionWriter writer = pluggableWriteSupport.newPartitionWriter(
-        sparkConf.getAppId(), shuffleId, mapId)) {
-      try {
-        for (int i = 0; i < spills.length; i++) {
-          spillInputStreams[i] = new NioBufferedFileInputStream(
-              spills[i].file,
-              inputBufferSizeInBytes);
-        }
-        for (int partition = 0; partition < numPartitions; partition++) {
+    try {
+      for (int i = 0; i < spills.length; i++) {
+        spillInputStreams[i] = new NioBufferedFileInputStream(
+            spills[i].file,
+            inputBufferSizeInBytes);
+      }
+      for (int partition = 0; partition < numPartitions; partition++) {
+        ShufflePartitionWriter writer = pluggableWriteSupport.newPartitionWriter(
+            sparkConf.getAppId(), shuffleId, mapId, partition);
+        try {
           for (int i = 0; i < spills.length; i++) {
             final long partitionLengthInSpill = spills[i].partitionLengths[partition];
             if (partitionLengthInSpill > 0) {
@@ -534,18 +535,15 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
                 if (compressionCodec != null) {
                   partitionInputStream = compressionCodec.compressedInputStream(partitionInputStream);
                 }
-                partitionLengths[partition] = writer.appendPartition(partition, partitionInputStream);
+                writer.appendBytesToPartition(partitionInputStream);
               } finally {
                 partitionInputStream.close();
               }
             }
           }
-        }
-      } catch (Exception e) {
-        try {
-          writer.abort();
-        } catch (Exception e2) {
-          logger.warn("Failed to close shuffle writer upon aborting.", e2);
+          partitionLengths[partition] = writer.commitAndGetTotalLength();
+        } catch (Exception e) {
+          writer.abort(e);
         }
       }
       threwException = false;
@@ -558,6 +556,12 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     }
     return partitionLengths;
   }
+
+//  private long[] writeSingleSpillFileUsingPluggableWriter(
+//      SpillInfo spillInfo,
+//      @Nullable CompressionCodec compressionCodec) {
+//    assert(pluggableWriteSupport != null);
+//  }
 
   @Override
   public Option<MapStatus> stop(boolean success) {
