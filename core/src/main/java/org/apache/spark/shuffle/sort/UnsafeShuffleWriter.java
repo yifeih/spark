@@ -299,11 +299,13 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         new FileOutputStream(outputFile).close(); // Create an empty file
         return new long[partitioner.numPartitions()];
       } else if (spills.length == 1) {
-        // Here, we don't need to perform any metrics updates because the bytes written to this
-        // output file would have already been counted as shuffle bytes written.
-
-        // TODO handle single file case
-        Files.move(spills[0].file, outputFile);
+        if (pluggableWriteSupport != null) {
+          writeSingleSpillFileUsingPluggableWriter(spills[0], compressionCodec);
+        } else {
+          // Here, we don't need to perform any metrics updates because the bytes written to this
+          // output file would have already been counted as shuffle bytes written.
+          Files.move(spills[0].file, outputFile);
+        }
         return spills[0].partitionLengths;
       } else {
         final long[] partitionLengths;
@@ -517,8 +519,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     try {
       for (int i = 0; i < spills.length; i++) {
         spillInputStreams[i] = new NioBufferedFileInputStream(
-            spills[i].file,
-            inputBufferSizeInBytes);
+            spills[i].file, inputBufferSizeInBytes);
       }
       for (int partition = 0; partition < numPartitions; partition++) {
         ShufflePartitionWriter writer = pluggableWriteSupport.newPartitionWriter(
@@ -557,11 +558,38 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     return partitionLengths;
   }
 
-//  private long[] writeSingleSpillFileUsingPluggableWriter(
-//      SpillInfo spillInfo,
-//      @Nullable CompressionCodec compressionCodec) {
-//    assert(pluggableWriteSupport != null);
-//  }
+  private void writeSingleSpillFileUsingPluggableWriter(
+      SpillInfo spillInfo,
+      @Nullable CompressionCodec compressionCodec) throws IOException {
+    assert(pluggableWriteSupport != null);
+    final int numPartitions = partitioner.numPartitions();
+    boolean threwException = true;
+    InputStream spillInputStream = new NioBufferedFileInputStream(
+            spillInfo.file,
+            inputBufferSizeInBytes);
+    try {
+      for (int partition = 0; partition < numPartitions; partition++) {
+        ShufflePartitionWriter writer = pluggableWriteSupport.newPartitionWriter(
+            sparkConf.getAppId(), shuffleId, mapId, partition);
+        InputStream partitionInputStream = new LimitedInputStream(spillInputStream,
+            spillInfo.partitionLengths[partition], false);
+        try {
+          partitionInputStream = blockManager.serializerManager().wrapForEncryption(
+              partitionInputStream);
+          if (compressionCodec != null) {
+            partitionInputStream = compressionCodec.compressedInputStream(partitionInputStream);
+          }
+          writer.appendBytesToPartition(partitionInputStream);
+        } finally {
+          partitionInputStream.close();
+        }
+        writer.commitAndGetTotalLength();
+      }
+      threwException = false;
+    } finally {
+      Closeables.close(spillInputStream, threwException);
+    }
+  }
 
   @Override
   public Option<MapStatus> stop(boolean success) {
