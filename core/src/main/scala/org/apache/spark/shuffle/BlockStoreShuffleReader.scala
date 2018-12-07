@@ -46,24 +46,21 @@ private[spark] class BlockStoreShuffleReader[K, C](
 
   /** Read the combined key-values for this reduce task */
   override def read(): Iterator[Product2[K, C]] = {
-    val mapSizesByExecId =
-      mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition)
     val wrappedStreams = if (pluggableReader != null) {
-      val readerForShuffle = pluggableReader.newPartitionReader(appId, handle.shuffleId)
-      mapSizesByExecId
-        .flatMap { case (_, sizes) =>
-          sizes.map { case (blockId, _) =>
-            val (mapId, reduceId) = blockId match {
-              case ShuffleBlockId(_, blockMapId, blockReduceId) => (blockMapId, blockReduceId)
-              case ShuffleDataBlockId(_, blockMapId, blockReduceId) => (blockMapId, blockReduceId)
-              case _ =>
-                throw new IllegalArgumentException(
-                  s"Block id is not a valid shuffle block id: $blockId")
+      getBlockIdsGroupedByMapIds(handle.shuffleId, startPartition, endPartition)
+        .flatMap { case (mapId, blockIds) =>
+            val reader = pluggableReader.newPartitionReader(
+              appId, handle.shuffleId, mapId)
+            blockIds.map {
+              case ShuffleBlockId(_, _, reduceId) => reader.fetchPartition(reduceId)
+              case ShuffleDataBlockId(_, _, reduceId) => reader.fetchPartition(reduceId)
+              case invalid =>
+                throw new IllegalArgumentException(s"Invalid block id $invalid")
             }
-            (blockId, readerForShuffle.fetchPartition(mapId, reduceId))
-          }
         }
     } else {
+      val mapSizesByExecId =
+        mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition)
       new ShuffleBlockFetcherIterator(
         context,
         blockManager.shuffleClient,
@@ -142,5 +139,27 @@ private[spark] class BlockStoreShuffleReader[K, C](
         // or(and) sorter may have consumed previous interruptible iterator.
         new InterruptibleIterator[Product2[K, C]](context, resultIter)
     }
+  }
+
+  private def getBlockIdsGroupedByMapIds(
+      shuffleId: Int, startPartition: Int, endPartition: Int): Iterator[(Int, Seq[BlockId])] = {
+    mapOutputTracker.getMapSizesByExecutorId(shuffleId, startPartition, endPartition)
+      .flatMap(_._2)
+      .map(_._1)
+      .toStream
+      .filter { blockId =>
+        blockId match {
+          case ShuffleBlockId(_, _, _) => true
+          case ShuffleDataBlockId(_, _, _) => true
+          case _ => false
+        }
+      }
+      .groupBy {
+        case ShuffleBlockId(_, mapId, _) => mapId
+        case ShuffleDataBlockId(_, mapId, _) => mapId
+        case blockId =>
+          throw new IllegalArgumentException(s"Invalid block id: $blockId")
+      }.mapValues(_.toSeq)
+      .iterator
   }
 }

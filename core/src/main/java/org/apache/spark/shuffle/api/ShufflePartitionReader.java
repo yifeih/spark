@@ -21,5 +21,5 @@ import java.io.InputStream;
 
 public interface ShufflePartitionReader {
 
-  InputStream fetchPartition(int mapId, int reduceId);
+  InputStream fetchPartition(int reduceId);
 }
