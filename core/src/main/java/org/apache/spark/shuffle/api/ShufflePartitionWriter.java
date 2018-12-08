@@ -31,7 +31,7 @@ public interface ShufflePartitionWriter {
    * byte from the incoming input stream and multicast ot to multiple backends for replication.
    * So OutputStream is too restrictive of an API.
    */
-  void appendBytesToPartition(InputStream partitionInputStream);
+  void appendBytesToPartition(InputStream streamReadingBytesToAppend);
 
   /**
    * Indicate that the partition was written successfully and there are no more incoming bytes. Returns

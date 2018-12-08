@@ -52,8 +52,10 @@ private[spark] class BlockStoreShuffleReader[K, C](
           val reader = readSupport.newPartitionReader(
             appId, handle.shuffleId, mapId)
           blockIds.map {
-            case ShuffleBlockId(_, _, reduceId) => reader.fetchPartition(reduceId)
-            case ShuffleDataBlockId(_, _, reduceId) => reader.fetchPartition(reduceId)
+            case blockId@ShuffleBlockId(_, _, reduceId) =>
+              (blockId, reader.fetchPartition(reduceId))
+            case dataBlockId@ShuffleDataBlockId(_, _, reduceId) =>
+              (dataBlockId, reader.fetchPartition(reduceId))
             case invalid =>
               throw new IllegalArgumentException(s"Invalid block id $invalid")
           }

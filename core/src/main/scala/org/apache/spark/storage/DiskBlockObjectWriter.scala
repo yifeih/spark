@@ -46,7 +46,8 @@ private[spark] class DiskBlockObjectWriter(
     writeMetrics: ShuffleWriteMetricsReporter,
     val blockId: BlockId = null)
   extends OutputStream
-  with Logging {
+  with Logging
+  with PairsWriter {
 
   /**
    * Guards against close calls, e.g. from a wrapping stream.
@@ -232,7 +233,7 @@ private[spark] class DiskBlockObjectWriter(
   /**
    * Writes a key-value pair.
    */
-  def write(key: Any, value: Any) {
+  override def write(key: Any, value: Any) {
     if (!streamOpen) {
       open()
     }
