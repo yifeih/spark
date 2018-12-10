@@ -19,12 +19,14 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
 
     private final TransportClient client;
     private final String appId;
+    private final int execId;
     private final int shuffleId;
     private final int mapId;
 
-    public ExternalShufflePartitionWriter(TransportClient client, String appId, int shuffleId, int mapId) {
+    public ExternalShufflePartitionWriter(TransportClient client, String appId, int execId, int shuffleId, int mapId) {
         this.client = client;
         this.appId = appId;
+        this.execId = execId;
         this.shuffleId = shuffleId;
         this.mapId = mapId;
     }
@@ -44,7 +46,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
         };
         try {
             ByteBuffer streamHeader =
-                    new UploadShufflePartitionStream(this.appId, shuffleId, mapId).toByteBuffer();
+                    new UploadShufflePartitionStream(this.appId, execId, shuffleId, mapId).toByteBuffer();
             int avaibleSize = partitionInputStream.available();
             byte[] buf = new byte[avaibleSize];
             int size = partitionInputStream.read(buf, 0, avaibleSize);

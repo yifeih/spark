@@ -25,14 +25,16 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
     private final SecretKeyHolder secretKeyHolder;
     private final String hostname;
     private final int port;
+    private final int execId;
 
     public ExternalShuffleWriteSupport(
-            TransportConf conf, boolean authEnabled, SecretKeyHolder secretKeyHolder, String hostname, int port) {
+            TransportConf conf, boolean authEnabled, SecretKeyHolder secretKeyHolder, String hostname, int port, int execId) {
         this.conf = conf;
         this.authEnabled = authEnabled;
         this.secretKeyHolder = secretKeyHolder;
         this.hostname = hostname;
         this.port = port;
+        this.execId = execId;
     }
 
     @Override
@@ -45,7 +47,7 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
         TransportClientFactory clientFactory = context.createClientFactory(bootstraps);
         try {
             TransportClient client = clientFactory.createClient(hostname, port);
-            return new ExternalShufflePartitionWriter(client, appId, shuffleId, mapId);
+            return new ExternalShufflePartitionWriter(client, appId, shuffleId, mapId, execId);
         } catch (Exception e) {
             logger.error("Encountered error while creating transport client");
             throw new RuntimeException(e); // is this what i want to do?

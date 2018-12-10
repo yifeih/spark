@@ -16,17 +16,20 @@ public class ExternalShuffleDataIO implements ShuffleDataIO {
     private final SecurityManager securityManager;
     private final String hostname;
     private final int port;
+    private final int execId;
 
     public ExternalShuffleDataIO(
             SparkConf sparkConf,
             SecurityManager securityManager,
             String hostname, // start out with one, TODO: make this compatible with multiple
-            int port) {
+            int port,
+            int execId) {
         this.sparkConf = sparkConf;
         this.conf = SparkTransportConf.fromSparkConf(sparkConf, "shuffle", 0 /* ? */);
         this.securityManager = securityManager;
         this.hostname = hostname;
         this.port = port;
+        this.execId = execId;
     }
 
     @Override
@@ -37,6 +40,6 @@ public class ExternalShuffleDataIO implements ShuffleDataIO {
     @Override
     public ShuffleWriteSupport writeSupport() {
         return new ExternalShuffleWriteSupport(
-                conf, securityManager.isAuthenticationEnabled(), securityManager, hostname, port);
+                conf, securityManager.isAuthenticationEnabled(), securityManager, hostname, port, execId);
     }
 }
