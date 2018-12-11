@@ -25,7 +25,7 @@ public class ExternalShuffleReadSupport implements ShuffleReadSupport {
     private final SecretKeyHolder secretKeyHolder;
     private final String hostname;
     private final int port;
-    private final int execId;
+    private final String execId;
 
     public ExternalShuffleReadSupport(
             TransportConf conf,
@@ -33,7 +33,7 @@ public class ExternalShuffleReadSupport implements ShuffleReadSupport {
             SecretKeyHolder secretKeyHolder,
             String hostname,
             int port,
-            int execId) {
+            String execId) {
         this.conf = conf;
         this.authEnabled = authEnabled;
         this.secretKeyHolder = secretKeyHolder;
@@ -53,7 +53,7 @@ public class ExternalShuffleReadSupport implements ShuffleReadSupport {
         TransportClientFactory clientFactory = context.createClientFactory(bootstraps);
         try {
             TransportClient client = clientFactory.createClient(hostname, port);
-            return new ExternalShufflePartitionReader(client, appId, shuffleId, mapId, execId);
+            return new ExternalShufflePartitionReader(client, appId, execId, shuffleId, mapId);
         } catch (Exception e) {
             logger.error("Encountered error while creating transport client");
             throw new RuntimeException(e); // what is standard practice here?

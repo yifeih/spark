@@ -25,10 +25,10 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
     private final SecretKeyHolder secretKeyHolder;
     private final String hostname;
     private final int port;
-    private final int execId;
+    private final String execId;
 
     public ExternalShuffleWriteSupport(
-            TransportConf conf, boolean authEnabled, SecretKeyHolder secretKeyHolder, String hostname, int port, int execId) {
+            TransportConf conf, boolean authEnabled, SecretKeyHolder secretKeyHolder, String hostname, int port, String execId) {
         this.conf = conf;
         this.authEnabled = authEnabled;
         this.secretKeyHolder = secretKeyHolder;
@@ -47,7 +47,7 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
         TransportClientFactory clientFactory = context.createClientFactory(bootstraps);
         try {
             TransportClient client = clientFactory.createClient(hostname, port);
-            return new ExternalShufflePartitionWriter(client, appId, shuffleId, mapId, execId, partitionId);
+            return new ExternalShufflePartitionWriter(client, appId, execId, shuffleId, mapId, partitionId);
         } catch (Exception e) {
             logger.error("Encountered error while creating transport client");
             throw new RuntimeException(e); // what is standard practice here?

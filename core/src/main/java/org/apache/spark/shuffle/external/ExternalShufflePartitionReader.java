@@ -24,11 +24,11 @@ public class ExternalShufflePartitionReader implements ShufflePartitionReader {
 
     private final TransportClient client;
     private final String appId;
-    private final int execId;
+    private final String execId;
     private final int shuffleId;
     private final int mapId;
 
-    public ExternalShufflePartitionReader(TransportClient client, String appId, int execId, int shuffleId, int mapId) {
+    public ExternalShufflePartitionReader(TransportClient client, String appId, String execId, int shuffleId, int mapId) {
         this.client = client;
         this.appId = appId;
         this.execId = execId;

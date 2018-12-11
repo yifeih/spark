@@ -19,7 +19,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
 
     private final TransportClient client;
     private final String appId;
-    private final int execId;
+    private final String execId;
     private final int shuffleId;
     private final int mapId;
     private final int partitionId;
@@ -29,7 +29,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
     public ExternalShufflePartitionWriter(
             TransportClient client,
             String appId,
-            int execId,
+            String execId,
             int shuffleId,
             int mapId,
             int partitionId) {
