@@ -36,29 +36,31 @@ private[spark] class BlockStoreShuffleReader[K, C](
     endPartition: Int,
     context: TaskContext,
     readMetrics: ShuffleReadMetricsReporter,
+    pluggableReadSupport: Option[ShuffleReadSupport],
     serializerManager: SerializerManager = SparkEnv.get.serializerManager,
     blockManager: BlockManager = SparkEnv.get.blockManager,
-    mapOutputTracker: MapOutputTracker = SparkEnv.get.mapOutputTracker,
-    pluggableReader: ShuffleReadSupport = null) // TODO initialize
+    mapOutputTracker: MapOutputTracker = SparkEnv.get.mapOutputTracker) // TODO initialize
   extends ShuffleReader[K, C] with Logging {
 
   private val dep = handle.dependency
 
   /** Read the combined key-values for this reduce task */
   override def read(): Iterator[Product2[K, C]] = {
-    val wrappedStreams = if (pluggableReader != null) {
+    val wrappedStreams = pluggableReadSupport.map { readSupport =>
       getBlockIdsGroupedByMapIds(handle.shuffleId, startPartition, endPartition)
         .flatMap { case (mapId, blockIds) =>
-            val reader = pluggableReader.newPartitionReader(
-              appId, handle.shuffleId, mapId)
-            blockIds.map {
-              case ShuffleBlockId(_, _, reduceId) => reader.fetchPartition(reduceId)
-              case ShuffleDataBlockId(_, _, reduceId) => reader.fetchPartition(reduceId)
-              case invalid =>
-                throw new IllegalArgumentException(s"Invalid block id $invalid")
-            }
+          val reader = readSupport.newPartitionReader(
+            appId, handle.shuffleId, mapId)
+          blockIds.map {
+            case blockId@ShuffleBlockId(_, _, reduceId) =>
+              (blockId, reader.fetchPartition(reduceId))
+            case dataBlockId@ShuffleDataBlockId(_, _, reduceId) =>
+              (dataBlockId, reader.fetchPartition(reduceId))
+            case invalid =>
+              throw new IllegalArgumentException(s"Invalid block id $invalid")
+          }
         }
-    } else {
+    }.getOrElse {
       val mapSizesByExecId =
         mapOutputTracker.getMapSizesByExecutorId(handle.shuffleId, startPartition, endPartition)
       new ShuffleBlockFetcherIterator(

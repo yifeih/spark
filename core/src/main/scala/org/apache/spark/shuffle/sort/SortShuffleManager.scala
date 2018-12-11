@@ -21,7 +21,10 @@ import java.util.concurrent.ConcurrentHashMap
 
 import org.apache.spark._
 import org.apache.spark.internal.Logging
+import org.apache.spark.internal.config.SHUFFLE_IO_PLUGIN_CLASS
 import org.apache.spark.shuffle._
+import org.apache.spark.shuffle.api.ShuffleDataIO
+import org.apache.spark.util.Utils
 
 /**
  * In sort-based shuffle, incoming records are sorted according to their target partition ids, then
@@ -74,6 +77,11 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
         " Shuffle will continue to spill to disk when necessary.")
   }
 
+  private val shuffleIoPlugin = conf.get(SHUFFLE_IO_PLUGIN_CLASS)
+    .map(clazz => Utils.loadExtensions(classOf[ShuffleDataIO], Seq(clazz), conf).head)
+
+  shuffleIoPlugin.foreach(_.initialize())
+
   /**
    * A mapping from shuffle ids to the number of mappers producing output for those shuffles.
    */
@@ -122,7 +130,8 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       startPartition,
       endPartition,
       context,
-      metrics)
+      metrics,
+      shuffleIoPlugin.map(_.readSupport()))
   }
 
   /** Get a writer for a given partition. Called on executors by map tasks. */
@@ -144,7 +153,8 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
           mapId,
           context,
           env.conf,
-          metrics)
+          metrics,
+          shuffleIoPlugin.map(_.writeSupport()).orNull)
       case bypassMergeSortHandle: BypassMergeSortShuffleHandle[K @unchecked, V @unchecked] =>
         new BypassMergeSortShuffleWriter(
           env.blockManager,
@@ -154,7 +164,8 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
           env.conf,
           metrics)
       case other: BaseShuffleHandle[K @unchecked, V @unchecked, _] =>
-        new SortShuffleWriter(shuffleBlockResolver, other, mapId, context)
+        new SortShuffleWriter(
+          shuffleBlockResolver, other, mapId, context, shuffleIoPlugin.map(_.writeSupport()))
     }
   }
 

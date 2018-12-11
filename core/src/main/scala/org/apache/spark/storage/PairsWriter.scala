@@ -14,13 +14,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.spark.shuffle.api;
 
-public interface ShuffleDataIO {
+package org.apache.spark.storage
 
-  void initialize();
-
-  ShuffleReadSupport readSupport();
-
-  ShuffleWriteSupport writeSupport();
+trait PairsWriter {
+  def write(key: Any, value: Any): Unit
 }
