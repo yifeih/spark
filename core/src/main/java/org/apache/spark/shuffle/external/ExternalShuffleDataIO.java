@@ -37,7 +37,7 @@ public class ExternalShuffleDataIO implements ShuffleDataIO {
         } else {
             this.port = tmpPort;
         }
-        this.execId = SparkEnv.get().blockManager().shuffleServerId().executorId()
+        this.execId = SparkEnv.get().blockManager().shuffleServerId().executorId();
     }
 
     @Override
