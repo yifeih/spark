@@ -38,7 +38,7 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
     }
 
     @Override
-    public ShufflePartitionWriter newPartitionWriter(String appId, int shuffleId, int mapId) {
+    public ShufflePartitionWriter newPartitionWriter(String appId, int shuffleId, int mapId, int partitionId) {
         TransportContext context = new TransportContext(conf, new NoOpRpcHandler(), true, true);
         List<TransportClientBootstrap> bootstraps = Lists.newArrayList();
         if (authEnabled) {
@@ -47,10 +47,10 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
         TransportClientFactory clientFactory = context.createClientFactory(bootstraps);
         try {
             TransportClient client = clientFactory.createClient(hostname, port);
-            return new ExternalShufflePartitionWriter(client, appId, shuffleId, mapId, execId);
+            return new ExternalShufflePartitionWriter(client, appId, shuffleId, mapId, execId, partitionId);
         } catch (Exception e) {
             logger.error("Encountered error while creating transport client");
-            throw new RuntimeException(e); // is this what i want to do?
+            throw new RuntimeException(e); // what is standard practice here?
         }
     }
 }

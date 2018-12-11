@@ -29,12 +29,14 @@ public class UploadShufflePartitionStream extends BlockTransferMessage {
     public final int execId;
     public final int shuffleId;
     public final int mapId;
+    public final int partitionId;
 
-    public UploadShufflePartitionStream(String appId, int execId, int shuffleId, int mapId) {
+    public UploadShufflePartitionStream(String appId, int execId, int shuffleId, int mapId, int partitionId) {
         this.appId = appId;
         this.execId = execId;
         this.shuffleId = shuffleId;
         this.mapId = mapId;
+        this.partitionId = partitionId;
     }
 
     @Override
@@ -44,7 +46,8 @@ public class UploadShufflePartitionStream extends BlockTransferMessage {
             return Objects.equal(appId, o.appId)
                     && execId == o.execId
                     && shuffleId == o.shuffleId
-                    && mapId == o.mapId;
+                    && mapId == o.mapId
+                    && partitionId == o.partitionId;
         }
         return false;
     }
@@ -56,7 +59,7 @@ public class UploadShufflePartitionStream extends BlockTransferMessage {
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(appId, execId, shuffleId, mapId);
+        return Objects.hashCode(appId, execId, shuffleId, mapId, partitionId);
     }
 
     @Override
@@ -71,7 +74,7 @@ public class UploadShufflePartitionStream extends BlockTransferMessage {
 
     @Override
     public int encodedLength() {
-        return Encoders.Strings.encodedLength(appId) + 4 + 4 + 4;
+        return Encoders.Strings.encodedLength(appId) + 4 + 4 + 4 + 4;
     }
 
     @Override
@@ -80,6 +83,7 @@ public class UploadShufflePartitionStream extends BlockTransferMessage {
         buf.writeInt(execId);
         buf.writeInt(shuffleId);
         buf.writeInt(mapId);
+        buf.writeInt(partitionId);
     }
 
     public static UploadShufflePartitionStream decode(ByteBuf buf) {
@@ -87,6 +91,7 @@ public class UploadShufflePartitionStream extends BlockTransferMessage {
         int execId = buf.readInt();
         int shuffleId = buf.readInt();
         int mapId = buf.readInt();
-        return new UploadShufflePartitionStream(appId, execId, shuffleId, mapId);
+        int partitionId = buf.readInt();
+        return new UploadShufflePartitionStream(appId, execId, shuffleId, mapId, partitionId);
     }
 }

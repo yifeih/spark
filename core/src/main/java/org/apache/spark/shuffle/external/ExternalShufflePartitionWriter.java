@@ -22,17 +22,27 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
     private final int execId;
     private final int shuffleId;
     private final int mapId;
+    private final int partitionId;
 
-    public ExternalShufflePartitionWriter(TransportClient client, String appId, int execId, int shuffleId, int mapId) {
+    private long totalLength = 0;
+
+    public ExternalShufflePartitionWriter(
+            TransportClient client,
+            String appId,
+            int execId,
+            int shuffleId,
+            int mapId,
+            int partitionId) {
         this.client = client;
         this.appId = appId;
         this.execId = execId;
         this.shuffleId = shuffleId;
         this.mapId = mapId;
+        this.partitionId = partitionId;
     }
 
     @Override
-    public int appendPartition(int partitionId, InputStream partitionInputStream) {
+    public void appendBytesToPartition(InputStream streamReadingBytesToAppend) {
         RpcResponseCallback callback = new RpcResponseCallback() {
             @Override
             public void onSuccess(ByteBuffer response) {
@@ -46,14 +56,14 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
         };
         try {
             ByteBuffer streamHeader =
-                    new UploadShufflePartitionStream(this.appId, execId, shuffleId, mapId).toByteBuffer();
-            int avaibleSize = partitionInputStream.available();
+                    new UploadShufflePartitionStream(this.appId, execId, shuffleId, mapId, partitionId).toByteBuffer();
+            int avaibleSize = streamReadingBytesToAppend.available();
             byte[] buf = new byte[avaibleSize];
-            int size = partitionInputStream.read(buf, 0, avaibleSize);
+            int size = streamReadingBytesToAppend.read(buf, 0, avaibleSize);
             assert size == avaibleSize;
             ManagedBuffer managedBuffer = new NioManagedBuffer(ByteBuffer.wrap(buf));
             client.uploadStream(new NioManagedBuffer(streamHeader), managedBuffer, callback);
-            return size;
+            totalLength += size;
         } catch (Exception e) {
             logger.error("Encountered error while attempting to upload partition to ESS", e);
             throw new RuntimeException(e);
@@ -61,12 +71,12 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
     }
 
     @Override
-    public void abort() {
-        // should i abort everything i've written with this writer?
+    public long commitAndGetTotalLength() {
+        return totalLength;
     }
 
     @Override
-    public void close() throws IOException {
-        // how to commit?
+    public void abort(Exception failureReason) {
+        // TODO
     }
 }
