@@ -2,7 +2,6 @@ package org.apache.spark.shuffle.external;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.network.netty.SparkTransportConf;
-import org.apache.spark.network.sasl.SecretKeyHolder;
 import org.apache.spark.network.util.TransportConf;
 import org.apache.spark.shuffle.api.ShuffleDataIO;
 import org.apache.spark.shuffle.api.ShuffleReadSupport;
@@ -33,8 +32,14 @@ public class ExternalShuffleDataIO implements ShuffleDataIO {
     }
 
     @Override
+    public void initialize() {
+        // figure out initialization
+    }
+
+    @Override
     public ShuffleReadSupport readSupport() {
-        return new ExternalShuffleReadSupport();
+        return new ExternalShuffleReadSupport(
+                conf, securityManager.isAuthenticationEnabled(), securityManager, hostname, port, execId);
     }
 
     @Override

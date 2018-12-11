@@ -1,37 +1,17 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *    http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package org.apache.spark.network.shuffle.protocol;
 
 import com.google.common.base.Objects;
 import io.netty.buffer.ByteBuf;
 import org.apache.spark.network.protocol.Encoders;
 
-/**
- * Upload shuffle partition request to the External Shuffle Service.
- */
-public class UploadShufflePartitionStream extends BlockTransferMessage {
+public class OpenShufflePartition extends BlockTransferMessage {
     public final String appId;
     public final int execId;
     public final int shuffleId;
     public final int mapId;
     public final int partitionId;
 
-    public UploadShufflePartitionStream(String appId, int execId, int shuffleId, int mapId, int partitionId) {
+    public OpenShufflePartition(String appId, int execId, int shuffleId, int mapId, int partitionId) {
         this.appId = appId;
         this.execId = execId;
         this.shuffleId = shuffleId;
@@ -41,8 +21,8 @@ public class UploadShufflePartitionStream extends BlockTransferMessage {
 
     @Override
     public boolean equals(Object other) {
-        if (other != null && other instanceof UploadShufflePartitionStream) {
-            UploadShufflePartitionStream o = (UploadShufflePartitionStream) other;
+        if (other != null && other instanceof OpenShufflePartition) {
+            OpenShufflePartition o = (OpenShufflePartition) other;
             return Objects.equal(appId, o.appId)
                     && execId == o.execId
                     && shuffleId == o.shuffleId
@@ -54,7 +34,7 @@ public class UploadShufflePartitionStream extends BlockTransferMessage {
 
     @Override
     protected Type type() {
-        return Type.UPLOAD_SHUFFLE_PARTITION_STREAM;
+        return null;
     }
 
     @Override
@@ -86,12 +66,12 @@ public class UploadShufflePartitionStream extends BlockTransferMessage {
         buf.writeInt(partitionId);
     }
 
-    public static UploadShufflePartitionStream decode(ByteBuf buf) {
+    public static OpenShufflePartition decode(ByteBuf buf) {
         String appId = Encoders.Strings.decode(buf);
         int execId = buf.readInt();
         int shuffleId = buf.readInt();
         int mapId = buf.readInt();
         int partitionId = buf.readInt();
-        return new UploadShufflePartitionStream(appId, execId, shuffleId, mapId, partitionId);
+        return new OpenShufflePartition(appId, execId, shuffleId, mapId, partitionId);
     }
 }
