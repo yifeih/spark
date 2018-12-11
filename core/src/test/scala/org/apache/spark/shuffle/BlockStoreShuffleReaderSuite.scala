@@ -130,10 +130,12 @@ class BlockStoreShuffleReaderSuite extends SparkFunSuite with LocalSparkContext 
     val metrics = taskContext.taskMetrics.createTempShuffleReadMetrics()
     val shuffleReader = new BlockStoreShuffleReader(
       shuffleHandle,
+      "app-id",
       reduceId,
       reduceId + 1,
       taskContext,
       metrics,
+      Option.empty,
       serializerManager,
       blockManager,
       mapOutputTracker)
