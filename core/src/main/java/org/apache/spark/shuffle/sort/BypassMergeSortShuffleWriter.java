@@ -44,6 +44,8 @@ import org.apache.spark.serializer.SerializerInstance;
 import org.apache.spark.shuffle.ShuffleWriteMetricsReporter;
 import org.apache.spark.shuffle.IndexShuffleBlockResolver;
 import org.apache.spark.shuffle.ShuffleWriter;
+import org.apache.spark.shuffle.api.ShufflePartitionWriter;
+import org.apache.spark.shuffle.api.ShuffleWriteSupport;
 import org.apache.spark.storage.*;
 import org.apache.spark.util.Utils;
 
@@ -79,10 +81,12 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   private final BlockManager blockManager;
   private final Partitioner partitioner;
   private final ShuffleWriteMetricsReporter writeMetrics;
+  private final String appId;
   private final int shuffleId;
   private final int mapId;
   private final Serializer serializer;
   private final IndexShuffleBlockResolver shuffleBlockResolver;
+  private final ShuffleWriteSupport pluggableWriteSupport;
 
   /** Array of file writers, one for each partition */
   private DiskBlockObjectWriter[] partitionWriters;
@@ -103,7 +107,8 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       BypassMergeSortShuffleHandle<K, V> handle,
       int mapId,
       SparkConf conf,
-      ShuffleWriteMetricsReporter writeMetrics) {
+      ShuffleWriteMetricsReporter writeMetrics,
+      ShuffleWriteSupport pluggableWriteSupport) {
     // Use getSizeAsKb (not bytes) to maintain backwards compatibility if no units are provided
     this.fileBufferSize = (int) conf.getSizeAsKb("spark.shuffle.file.buffer", "32k") * 1024;
     this.transferToEnabled = conf.getBoolean("spark.file.transferTo", true);
@@ -116,6 +121,8 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     this.writeMetrics = writeMetrics;
     this.serializer = dep.serializer();
     this.shuffleBlockResolver = shuffleBlockResolver;
+    this.pluggableWriteSupport = pluggableWriteSupport;
+    this.appId = conf.getAppId();
   }
 
   @Override
@@ -157,9 +164,9 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     }
 
     File output = shuffleBlockResolver.getDataFile(shuffleId, mapId);
-    File tmp = Utils.tempFileWith(output);
+    File tmp = pluggableWriteSupport != null ? null : Utils.tempFileWith(output);
     try {
-      partitionLengths = writePartitionedFile(tmp);
+      partitionLengths = combineAndWritePartitions(tmp);
       shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, tmp);
     } finally {
       if (tmp.exists() && !tmp.delete()) {
@@ -179,7 +186,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
    *
    * @return array of lengths, in bytes, of each partition of the file (used by map output tracker).
    */
-  private long[] writePartitionedFile(File outputFile) throws IOException {
+  private long[] combineAndWritePartitions(File outputFile) throws IOException {
     // Track location of the partition starts in the output file
     final long[] lengths = new long[numPartitions];
     if (partitionWriters == null) {
@@ -187,7 +194,8 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       return lengths;
     }
 
-    final FileOutputStream out = new FileOutputStream(outputFile, true);
+    final FileOutputStream out = outputFile == null ? null
+        : new FileOutputStream(outputFile, true);
     final long writeStartTime = System.nanoTime();
     boolean threwException = true;
     try {
@@ -197,8 +205,16 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           final FileInputStream in = new FileInputStream(file);
           boolean copyThrewException = true;
           try {
-            lengths[i] = Utils.copyStream(in, out, false, transferToEnabled);
-            copyThrewException = false;
+            if (pluggableWriteSupport != null) {
+              ShufflePartitionWriter writer = pluggableWriteSupport.newPartitionWriter(
+                  appId, shuffleId, mapId, i);
+              writer.appendBytesToPartition(in);
+              lengths[i] = writer.commitAndGetTotalLength();
+            } else {
+              assert(outputFile != null);
+              lengths[i] = Utils.copyStream(in, out, false, transferToEnabled);
+              copyThrewException = false;
+            }
           } finally {
             Closeables.close(in, copyThrewException);
           }
