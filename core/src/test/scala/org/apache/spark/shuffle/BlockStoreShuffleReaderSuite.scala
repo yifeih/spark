@@ -19,12 +19,14 @@ package org.apache.spark.shuffle
 
 import java.io.{ByteArrayOutputStream, InputStream}
 import java.nio.ByteBuffer
+import java.util.UUID
 
 import org.mockito.Mockito.{mock, when}
 
 import org.apache.spark._
 import org.apache.spark.network.buffer.{ManagedBuffer, NioManagedBuffer}
 import org.apache.spark.serializer.{JavaSerializer, SerializerManager}
+import org.apache.spark.shuffle.api.ShuffleReadSupport
 import org.apache.spark.storage.{BlockManager, BlockManagerId, ShuffleBlockId}
 
 /**
@@ -68,6 +70,7 @@ class BlockStoreShuffleReaderSuite extends SparkFunSuite with LocalSparkContext 
     val shuffleId = 22
     val numMaps = 6
     val keyValuePairsPerMap = 10
+    val appId = "spark-app-" + UUID.randomUUID().toString
     val serializer = new JavaSerializer(testConf)
 
     // Make a mock BlockManager that will return RecordingManagedByteBuffers of data, so that we
@@ -130,10 +133,12 @@ class BlockStoreShuffleReaderSuite extends SparkFunSuite with LocalSparkContext 
     val metrics = taskContext.taskMetrics.createTempShuffleReadMetrics()
     val shuffleReader = new BlockStoreShuffleReader(
       shuffleHandle,
+      appId,
       reduceId,
       reduceId + 1,
       taskContext,
       metrics,
+      Option.empty[ShuffleReadSupport],
       serializerManager,
       blockManager,
       mapOutputTracker)
