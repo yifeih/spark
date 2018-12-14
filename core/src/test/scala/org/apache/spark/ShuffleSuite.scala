@@ -23,13 +23,14 @@ import java.util.concurrent.{Callable, CyclicBarrier, Executors, ExecutorService
 import org.scalatest.Matchers
 
 import org.apache.spark.ShuffleSuite.NonJavaSerializableClass
+import org.apache.spark.internal.config._
 import org.apache.spark.memory.TaskMemoryManager
 import org.apache.spark.rdd.{CoGroupedRDD, OrderedRDDFunctions, RDD, ShuffledRDD, SubtractedRDD}
 import org.apache.spark.scheduler.{MapStatus, MyRDD, SparkListener, SparkListenerTaskEnd}
 import org.apache.spark.serializer.KryoSerializer
 import org.apache.spark.shuffle.ShuffleWriter
 import org.apache.spark.storage.{ShuffleBlockId, ShuffleDataBlockId, ShuffleIndexBlockId}
-import org.apache.spark.util.{MutablePair, Utils}
+import org.apache.spark.util.MutablePair
 
 abstract class ShuffleSuite extends SparkFunSuite with Matchers with LocalSparkContext {
 
@@ -41,6 +42,20 @@ abstract class ShuffleSuite extends SparkFunSuite with Matchers with LocalSparkC
 
   test("groupByKey without compression") {
     val myConf = conf.clone().set("spark.shuffle.compress", "false")
+    sc = new SparkContext("local", "test", myConf)
+    val pairs = sc.parallelize(Array((1, 1), (1, 2), (1, 3), (2, 1)), 4)
+    val groups = pairs.groupByKey(4).collect()
+    assert(groups.size === 2)
+    val valuesFor1 = groups.find(_._1 == 1).get._2
+    assert(valuesFor1.toList.sorted === List(1, 2, 3))
+    val valuesFor2 = groups.find(_._1 == 2).get._2
+    assert(valuesFor2.toList.sorted === List(1))
+  }
+
+  test("groupByKey with pluggable writer") {
+    val myConf = conf.clone().set("spark.shuffle.compress", "false")
+      .set(SHUFFLE_IO_PLUGIN_CLASS, classOf[SplitFilesShuffleIO].getName)
+      .set("spark.shuffle.sort.bypassMergeThreshold", "0")
     sc = new SparkContext("local", "test", myConf)
     val pairs = sc.parallelize(Array((1, 1), (1, 2), (1, 3), (2, 1)), 4)
     val groups = pairs.groupByKey(4).collect()

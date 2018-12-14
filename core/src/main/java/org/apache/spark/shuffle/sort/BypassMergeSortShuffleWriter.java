@@ -167,9 +167,11 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     File tmp = pluggableWriteSupport != null ? null : Utils.tempFileWith(output);
     try {
       partitionLengths = combineAndWritePartitions(tmp);
-      shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, tmp);
+      if (pluggableWriteSupport == null) {
+        shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, tmp);
+      }
     } finally {
-      if (tmp.exists() && !tmp.delete()) {
+      if (tmp != null && tmp.exists() && !tmp.delete()) {
         logger.error("Error while deleting temp file {}", tmp.getAbsolutePath());
       }
     }
