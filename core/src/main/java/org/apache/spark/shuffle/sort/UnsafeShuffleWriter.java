@@ -248,7 +248,9 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           }
         }
       }
-      shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, tmp);
+      if (pluggableWriteSupport == null) {
+        shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, tmp);
+      }
     } finally {
       if (tmp.exists() && !tmp.delete()) {
         logger.error("Error while deleting temp file {}", tmp.getAbsolutePath());
@@ -288,7 +290,8 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
    */
   private long[] mergeSpills(SpillInfo[] spills, File outputFile) throws IOException {
     final boolean compressionEnabled = sparkConf.getBoolean("spark.shuffle.compress", true);
-    final CompressionCodec compressionCodec = CompressionCodec$.MODULE$.createCodec(sparkConf);
+    final CompressionCodec compressionCodec =
+        compressionEnabled ? CompressionCodec$.MODULE$.createCodec(sparkConf) : null;
     final boolean fastMergeEnabled =
       sparkConf.getBoolean("spark.shuffle.unsafe.fastMergeEnabled", true);
     final boolean fastMergeIsSupported = !compressionEnabled ||
@@ -342,7 +345,9 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         // to be counted as shuffle write, but this will lead to double-counting of the final
         // SpillInfo's bytes.
         writeMetrics.decBytesWritten(spills[spills.length - 1].file.length());
-        writeMetrics.incBytesWritten(outputFile.length());
+        if (pluggableWriteSupport == null) {
+          writeMetrics.incBytesWritten(outputFile.length());
+        }
         return partitionLengths;
       }
     } catch (IOException e) {
@@ -543,6 +548,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
             }
           }
           partitionLengths[partition] = writer.commitAndGetTotalLength();
+          writeMetrics.incBytesWritten(partitionLengths[partition]);
         } catch (Exception e) {
           writer.abort(e);
         }
@@ -583,12 +589,13 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         } finally {
           partitionInputStream.close();
         }
-        writer.commitAndGetTotalLength();
+        writeMetrics.incBytesWritten(writer.commitAndGetTotalLength());
       }
       threwException = false;
     } finally {
       Closeables.close(spillInputStream, threwException);
     }
+    writeMetrics.decBytesWritten(spillInfo.file.length());
   }
 
   @Override

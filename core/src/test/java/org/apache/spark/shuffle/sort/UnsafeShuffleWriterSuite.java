@@ -19,8 +19,11 @@ package org.apache.spark.shuffle.sort;
 
 import java.io.*;
 import java.nio.ByteBuffer;
+import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
 
+import org.apache.commons.io.IOUtils;
 import scala.Option;
 import scala.Product2;
 import scala.Tuple2;
@@ -52,6 +55,8 @@ import org.apache.spark.scheduler.MapStatus;
 import org.apache.spark.security.CryptoStreamUtils;
 import org.apache.spark.serializer.*;
 import org.apache.spark.shuffle.IndexShuffleBlockResolver;
+import org.apache.spark.shuffle.api.ShufflePartitionWriter;
+import org.apache.spark.shuffle.api.ShuffleWriteSupport;
 import org.apache.spark.storage.*;
 import org.apache.spark.util.Utils;
 
@@ -101,7 +106,8 @@ public class UnsafeShuffleWriterSuite {
     spillFilesCreated.clear();
     conf = new SparkConf()
       .set("spark.buffer.pageSize", "1m")
-      .set("spark.memory.offHeap.enabled", "false");
+      .set("spark.memory.offHeap.enabled", "false")
+      .set("spark.app.id", "spark-app-id");
     taskMetrics = new TaskMetrics();
     memoryManager = new TestMemoryManager(conf);
     taskMemoryManager = new TaskMemoryManager(memoryManager, 0);
@@ -154,6 +160,10 @@ public class UnsafeShuffleWriterSuite {
 
   private UnsafeShuffleWriter<Object, Object> createWriter(
       boolean transferToEnabled) throws IOException {
+    return createWriter(transferToEnabled, false);
+  }
+  private UnsafeShuffleWriter<Object, Object> createWriter(
+      boolean transferToEnabled, boolean useShuffleWriterPlugin) throws IOException {
     conf.set("spark.file.transferTo", String.valueOf(transferToEnabled));
     return new UnsafeShuffleWriter<>(
       blockManager,
@@ -164,7 +174,7 @@ public class UnsafeShuffleWriterSuite {
       taskContext,
       conf,
       taskContext.taskMetrics().shuffleWriteMetrics(),
-      null
+      useShuffleWriterPlugin ? new TestShuffleWriteSupport() : null
     );
   }
 
@@ -274,10 +284,49 @@ public class UnsafeShuffleWriterSuite {
     assertEquals(mergedOutputFile.length(), shuffleWriteMetrics.bytesWritten());
   }
 
+  @Test
+  public void writeWithoutSpillingUsingPluggableWriter() throws Exception {
+    // In this example, each partition should have exactly one record:
+    final ArrayList<Product2<Object, Object>> dataToWrite = new ArrayList<>();
+    for (int i = 0; i < NUM_PARTITITONS; i++) {
+      dataToWrite.add(new Tuple2<>(i, i));
+    }
+    final UnsafeShuffleWriter<Object, Object> writer = createWriter(true, true);
+    writer.write(dataToWrite.iterator());
+    final Option<MapStatus> mapStatus = writer.stop(true);
+    assertTrue(mapStatus.isDefined());
+    assertTrue(mergedOutputFile.exists());
+
+    long sumOfPartitionSizes = 0;
+    for (long size: partitionSizesInMergedFile) {
+      // All partitions should be the same size:
+      assertEquals(partitionSizesInMergedFile[0], size);
+      sumOfPartitionSizes += size;
+    }
+    assertEquals(mergedOutputFile.length(), sumOfPartitionSizes);
+    assertEquals(
+        HashMultiset.create(dataToWrite),
+        HashMultiset.create(readRecordsFromFile()));
+    assertSpillFilesWereCleanedUp();
+    ShuffleWriteMetrics shuffleWriteMetrics = taskMetrics.shuffleWriteMetrics();
+    assertEquals(dataToWrite.size(), shuffleWriteMetrics.recordsWritten());
+    assertEquals(0, taskMetrics.diskBytesSpilled());
+    assertEquals(0, taskMetrics.memoryBytesSpilled());
+    assertEquals(mergedOutputFile.length(), shuffleWriteMetrics.bytesWritten());
+  }
+
   private void testMergingSpills(
       final boolean transferToEnabled,
       String compressionCodecName,
       boolean encrypt) throws Exception {
+    testMergingSpills(transferToEnabled, compressionCodecName, encrypt, false);
+  }
+
+  private void testMergingSpills(
+      final boolean transferToEnabled,
+      String compressionCodecName,
+      boolean encrypt,
+      boolean useShuffleWriterPlugin) throws Exception {
     if (compressionCodecName != null) {
       conf.set("spark.shuffle.compress", "true");
       conf.set("spark.io.compression.codec", compressionCodecName);
@@ -295,13 +344,13 @@ public class UnsafeShuffleWriterSuite {
     }
 
     when(blockManager.serializerManager()).thenReturn(manager);
-    testMergingSpills(transferToEnabled, encrypt);
+    testMergingSpills(transferToEnabled, useShuffleWriterPlugin);
   }
 
   private void testMergingSpills(
       boolean transferToEnabled,
-      boolean encrypted) throws IOException {
-    final UnsafeShuffleWriter<Object, Object> writer = createWriter(transferToEnabled);
+      boolean useShuffleWriterPlugin) throws IOException {
+    final UnsafeShuffleWriter<Object, Object> writer = createWriter(transferToEnabled, useShuffleWriterPlugin);
     final ArrayList<Product2<Object, Object>> dataToWrite = new ArrayList<>();
     for (int i : new int[] { 1, 2, 3, 4, 4, 2 }) {
       dataToWrite.add(new Tuple2<>(i, i));
@@ -334,6 +383,11 @@ public class UnsafeShuffleWriterSuite {
     assertThat(taskMetrics.diskBytesSpilled(), lessThan(mergedOutputFile.length()));
     assertThat(taskMetrics.memoryBytesSpilled(), greaterThan(0L));
     assertEquals(mergedOutputFile.length(), shuffleWriteMetrics.bytesWritten());
+  }
+
+  @Test
+  public void mergeSpillsUsingPluggableWriter() throws Exception {
+    testMergingSpills(true, LZFCompressionCodec.class.getName(), false, true);
   }
 
   @Test
@@ -410,6 +464,28 @@ public class UnsafeShuffleWriterSuite {
   public void writeEnoughDataToTriggerSpill() throws Exception {
     memoryManager.limit(PackedRecordPointer.MAXIMUM_PAGE_SIZE_BYTES);
     final UnsafeShuffleWriter<Object, Object> writer = createWriter(false);
+    final ArrayList<Product2<Object, Object>> dataToWrite = new ArrayList<>();
+    final byte[] bigByteArray = new byte[PackedRecordPointer.MAXIMUM_PAGE_SIZE_BYTES / 10];
+    for (int i = 0; i < 10 + 1; i++) {
+      dataToWrite.add(new Tuple2<>(i, bigByteArray));
+    }
+    writer.write(dataToWrite.iterator());
+    assertEquals(2, spillFilesCreated.size());
+    writer.stop(true);
+    readRecordsFromFile();
+    assertSpillFilesWereCleanedUp();
+    ShuffleWriteMetrics shuffleWriteMetrics = taskMetrics.shuffleWriteMetrics();
+    assertEquals(dataToWrite.size(), shuffleWriteMetrics.recordsWritten());
+    assertThat(taskMetrics.diskBytesSpilled(), greaterThan(0L));
+    assertThat(taskMetrics.diskBytesSpilled(), lessThan(mergedOutputFile.length()));
+    assertThat(taskMetrics.memoryBytesSpilled(), greaterThan(0L));
+    assertEquals(mergedOutputFile.length(), shuffleWriteMetrics.bytesWritten());
+  }
+
+  @Test
+  public void writeEnoughDataToTriggerSpillUsingPluggableWriter() throws Exception {
+    memoryManager.limit(PackedRecordPointer.MAXIMUM_PAGE_SIZE_BYTES);
+    final UnsafeShuffleWriter<Object, Object> writer = createWriter(false, true);
     final ArrayList<Product2<Object, Object>> dataToWrite = new ArrayList<>();
     final byte[] bigByteArray = new byte[PackedRecordPointer.MAXIMUM_PAGE_SIZE_BYTES / 10];
     for (int i = 0; i < 10 + 1; i++) {
@@ -561,6 +637,66 @@ public class UnsafeShuffleWriterSuite {
       assertEquals(previousPeakMemory, newPeakMemory);
     } finally {
       writer.stop(false);
+    }
+  }
+
+  private final class TestShuffleWriteSupport implements ShuffleWriteSupport {
+
+    @Override
+    public ShufflePartitionWriter newPartitionWriter(String appId, int shuffleId, int mapId, int partitionId) {
+      try {
+        if (!mergedOutputFile.exists() && !mergedOutputFile.createNewFile()) {
+          throw new IllegalStateException(
+              String.format("Failed to create merged output file %s.", mergedOutputFile.getAbsolutePath()));
+        }
+      } catch (IOException e) {
+        throw new RuntimeException(e);
+      }
+      if (partitionSizesInMergedFile == null) {
+        partitionSizesInMergedFile = new long[NUM_PARTITITONS];
+      }
+
+      return new ShufflePartitionWriter() {
+
+        private final ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
+        private final OutputStream partitionBuffer =
+            blockManager.serializerManager().wrapForEncryption(
+                CompressionCodec$.MODULE$.createCodec(conf).compressedOutputStream(byteBuffer));
+
+        @Override
+        public void appendBytesToPartition(InputStream streamReadingBytesToAppend) {
+          try {
+            byte[] bytes = IOUtils.toByteArray(streamReadingBytesToAppend);
+            partitionBuffer.write(bytes, 0, bytes.length);
+          } catch (IOException e) {
+            throw new RuntimeException(e);
+          }
+        }
+
+        @Override
+        public long commitAndGetTotalLength() {
+          try {
+            partitionBuffer.flush();
+            partitionBuffer.close();
+          } catch (IOException e) {
+            throw new RuntimeException(e);
+          }
+          byte[] partitionBytes = byteBuffer.toByteArray();
+          try {
+            Files.write(mergedOutputFile.toPath(), partitionBytes, StandardOpenOption.APPEND);
+          } catch (IOException e) {
+            throw new RuntimeException(e);
+          }
+          int length = partitionBytes.length;
+          partitionSizesInMergedFile[partitionId] = length;
+          return length;
+        }
+
+        @Override
+        public void abort(Exception failureReason) {
+
+        }
+      };
     }
   }
 
