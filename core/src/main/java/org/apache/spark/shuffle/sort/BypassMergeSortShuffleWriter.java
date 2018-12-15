@@ -44,6 +44,7 @@ import org.apache.spark.serializer.SerializerInstance;
 import org.apache.spark.shuffle.ShuffleWriteMetricsReporter;
 import org.apache.spark.shuffle.IndexShuffleBlockResolver;
 import org.apache.spark.shuffle.ShuffleWriter;
+import org.apache.spark.shuffle.api.ShuffleMapOutputWriter;
 import org.apache.spark.shuffle.api.ShufflePartitionWriter;
 import org.apache.spark.shuffle.api.ShuffleWriteSupport;
 import org.apache.spark.storage.*;
@@ -163,16 +164,18 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       }
     }
 
-    File output = shuffleBlockResolver.getDataFile(shuffleId, mapId);
-    File tmp = pluggableWriteSupport != null ? null : Utils.tempFileWith(output);
-    try {
-      partitionLengths = combineAndWritePartitions(tmp);
-      if (pluggableWriteSupport == null) {
+    if (pluggableWriteSupport != null) {
+      partitionLengths = combineAndWritePartitionsUsingPluggableWriter();
+    } else {
+      File output = shuffleBlockResolver.getDataFile(shuffleId, mapId);
+      File tmp = Utils.tempFileWith(output);
+      try {
+        partitionLengths = combineAndWritePartitions(tmp);
         shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, tmp);
-      }
-    } finally {
-      if (tmp != null && tmp.exists() && !tmp.delete()) {
-        logger.error("Error while deleting temp file {}", tmp.getAbsolutePath());
+      } finally {
+        if (tmp != null && tmp.exists() && !tmp.delete()) {
+          logger.error("Error while deleting temp file {}", tmp.getAbsolutePath());
+        }
       }
     }
     mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths);
@@ -195,9 +198,8 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       // We were passed an empty iterator
       return lengths;
     }
-
-    final FileOutputStream out = outputFile == null ? null
-        : new FileOutputStream(outputFile, true);
+    assert(outputFile != null);
+    final FileOutputStream out = new FileOutputStream(outputFile, true);
     final long writeStartTime = System.nanoTime();
     boolean threwException = true;
     try {
@@ -207,15 +209,52 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           final FileInputStream in = new FileInputStream(file);
           boolean copyThrewException = true;
           try {
-            if (pluggableWriteSupport != null) {
-              ShufflePartitionWriter writer = pluggableWriteSupport.newPartitionWriter(
-                  appId, shuffleId, mapId, i);
-              writer.appendBytesToPartition(in);
-              lengths[i] = writer.commitAndGetTotalLength();
-            } else {
-              assert(outputFile != null);
-              lengths[i] = Utils.copyStream(in, out, false, transferToEnabled);
-              copyThrewException = false;
+            lengths[i] = Utils.copyStream(in, out, false, transferToEnabled);
+            copyThrewException = false;
+          } finally {
+            Closeables.close(in, copyThrewException);
+          }
+          if (!file.delete()) {
+            logger.error("Unable to delete file for partition {}", i);
+          }
+        }
+      }
+    } finally {
+      Closeables.close(out, threwException);
+      writeMetrics.incWriteTime(System.nanoTime() - writeStartTime);
+    }
+    partitionWriters = null;
+    return lengths;
+  }
+
+  private long[] combineAndWritePartitionsUsingPluggableWriter() throws IOException {
+    // Track location of the partition starts in the output file
+    final long[] lengths = new long[numPartitions];
+    if (partitionWriters == null) {
+      // We were passed an empty iterator
+      return lengths;
+    }
+    assert(pluggableWriteSupport != null);
+
+    final long writeStartTime = System.nanoTime();
+    ShuffleMapOutputWriter mapOutputWriter = pluggableWriteSupport.newMapOutputWriter(
+          appId, shuffleId, mapId);
+    try {
+      for (int i = 0; i < numPartitions; i++) {
+        final File file = partitionWriterSegments[i].file();
+        if (file.exists()) {
+          final FileInputStream in = new FileInputStream(file);
+          boolean copyThrewException = true;
+          ShufflePartitionWriter writer = mapOutputWriter.newPartitionWriter(i);
+          try {
+            writer.appendBytesToPartition(in);
+            lengths[i] = writer.commitAndGetTotalLength();
+            copyThrewException = false;
+          } catch (Exception e) {
+            try {
+              writer.abort(e);
+            } catch (Exception e2) {
+              logger.warn("Failed to abort partition writer.", e2);
             }
           } finally {
             Closeables.close(in, copyThrewException);
@@ -225,9 +264,15 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           }
         }
       }
-      threwException = false;
+      mapOutputWriter.commitAllPartitions();
+    } catch (Exception e) {
+      try {
+        mapOutputWriter.abort(e);
+      } catch (Exception e2) {
+        logger.warn("Exception thrown while trying to abort the pluggable map output writer.", e2);
+      }
+      throw e;
     } finally {
-      Closeables.close(out, threwException);
       writeMetrics.incWriteTime(System.nanoTime() - writeStartTime);
     }
     partitionWriters = null;

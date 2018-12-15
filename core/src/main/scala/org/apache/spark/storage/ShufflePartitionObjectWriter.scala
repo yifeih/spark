@@ -21,7 +21,7 @@ import java.nio.ByteBuffer
 
 import org.apache.spark.serializer.{SerializationStream, SerializerInstance}
 import org.apache.spark.shuffle.ShufflePartitionWriterOutputStream
-import org.apache.spark.shuffle.api.{ShufflePartitionWriter, ShuffleWriteSupport}
+import org.apache.spark.shuffle.api.{ShuffleMapOutputWriter, ShufflePartitionWriter}
 
 /**
  * Replicates the concept of {@link DiskBlockObjectWriter}, but with some key differences:
@@ -32,10 +32,7 @@ import org.apache.spark.shuffle.api.{ShufflePartitionWriter, ShuffleWriteSupport
 private[spark] class ShufflePartitionObjectWriter(
     bufferSize: Int,
     serializerInstance: SerializerInstance,
-    appId: String,
-    shuffleId: Int,
-    mapId: Int,
-    writeSupport: ShuffleWriteSupport)
+    mapOutputWriter: ShuffleMapOutputWriter)
     extends PairsWriter {
 
   // Reused buffer. Experiments should be done with off-heap at some point.
@@ -48,7 +45,7 @@ private[spark] class ShufflePartitionObjectWriter(
     require(buffer.position() == 0,
       "Buffer was not flushed to the underlying output on the previous partition.")
     buffer.reset()
-    currentWriter = writeSupport.newPartitionWriter(appId, shuffleId, mapId, partitionId)
+    currentWriter = mapOutputWriter.newPartitionWriter(partitionId)
     val currentWriterStream = new ShufflePartitionWriterOutputStream(
       currentWriter, buffer, bufferSize)
     objectOutputStream = serializerInstance.serializeStream(currentWriterStream)

@@ -55,6 +55,7 @@ import org.apache.spark.scheduler.MapStatus;
 import org.apache.spark.security.CryptoStreamUtils;
 import org.apache.spark.serializer.*;
 import org.apache.spark.shuffle.IndexShuffleBlockResolver;
+import org.apache.spark.shuffle.api.ShuffleMapOutputWriter;
 import org.apache.spark.shuffle.api.ShufflePartitionWriter;
 import org.apache.spark.shuffle.api.ShuffleWriteSupport;
 import org.apache.spark.storage.*;
@@ -643,7 +644,7 @@ public class UnsafeShuffleWriterSuite {
   private final class TestShuffleWriteSupport implements ShuffleWriteSupport {
 
     @Override
-    public ShufflePartitionWriter newPartitionWriter(String appId, int shuffleId, int mapId, int partitionId) {
+    public ShuffleMapOutputWriter newMapOutputWriter(String appId, int shuffleId, int mapId) {
       try {
         if (!mergedOutputFile.exists() && !mergedOutputFile.createNewFile()) {
           throw new IllegalStateException(
@@ -656,40 +657,57 @@ public class UnsafeShuffleWriterSuite {
         partitionSizesInMergedFile = new long[NUM_PARTITITONS];
       }
 
-      return new ShufflePartitionWriter() {
+      return new ShuffleMapOutputWriter() {
 
-        private final ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
-        private final OutputStream partitionBuffer =
-            blockManager.serializerManager().wrapForEncryption(
-                CompressionCodec$.MODULE$.createCodec(conf).compressedOutputStream(byteBuffer));
 
         @Override
-        public void appendBytesToPartition(InputStream streamReadingBytesToAppend) {
-          try {
-            byte[] bytes = IOUtils.toByteArray(streamReadingBytesToAppend);
-            partitionBuffer.write(bytes, 0, bytes.length);
-          } catch (IOException e) {
-            throw new RuntimeException(e);
-          }
+        public ShufflePartitionWriter newPartitionWriter(int partitionId) {
+          return new ShufflePartitionWriter() {
+            private final ByteArrayOutputStream byteBuffer = new ByteArrayOutputStream();
+            private final OutputStream partitionBuffer =
+                blockManager.serializerManager().wrapForEncryption(
+                    CompressionCodec$.MODULE$.createCodec(conf).compressedOutputStream(byteBuffer));
+
+            @Override
+            public void appendBytesToPartition(InputStream streamReadingBytesToAppend) {
+              try {
+                byte[] bytes = IOUtils.toByteArray(streamReadingBytesToAppend);
+                partitionBuffer.write(bytes, 0, bytes.length);
+              } catch (IOException e) {
+                throw new RuntimeException(e);
+              }
+            }
+
+            @Override
+            public long commitAndGetTotalLength() {
+              try {
+                partitionBuffer.flush();
+                partitionBuffer.close();
+              } catch (IOException e) {
+                throw new RuntimeException(e);
+              }
+              byte[] partitionBytes = byteBuffer.toByteArray();
+              try {
+                Files.write(mergedOutputFile.toPath(), partitionBytes, StandardOpenOption.APPEND);
+              } catch (IOException e) {
+                throw new RuntimeException(e);
+              }
+              int length = partitionBytes.length;
+              partitionSizesInMergedFile[partitionId] = length;
+              return length;
+            }
+
+            @Override
+            public void abort(Exception failureReason) {
+
+            }
+          };
+
         }
 
         @Override
-        public long commitAndGetTotalLength() {
-          try {
-            partitionBuffer.flush();
-            partitionBuffer.close();
-          } catch (IOException e) {
-            throw new RuntimeException(e);
-          }
-          byte[] partitionBytes = byteBuffer.toByteArray();
-          try {
-            Files.write(mergedOutputFile.toPath(), partitionBytes, StandardOpenOption.APPEND);
-          } catch (IOException e) {
-            throw new RuntimeException(e);
-          }
-          int length = partitionBytes.length;
-          partitionSizesInMergedFile[partitionId] = length;
-          return length;
+        public void commitAllPartitions() {
+
         }
 
         @Override

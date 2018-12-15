@@ -53,7 +53,8 @@ abstract class ShuffleSuite extends SparkFunSuite with Matchers with LocalSparkC
   }
 
   test("groupByKey with pluggable writer") {
-    val myConf = conf.clone().set("spark.shuffle.compress", "false")
+    val myConf = new SparkConf(false)
+      .set("spark.test.noStageRetry", "true")
       .set(SHUFFLE_IO_PLUGIN_CLASS, classOf[SplitFilesShuffleIO].getName)
       .set("spark.shuffle.sort.bypassMergeThreshold", "0")
     sc = new SparkContext("local", "test", myConf)

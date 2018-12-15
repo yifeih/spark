@@ -38,29 +38,33 @@ class SplitFilesShuffleIO(conf: SparkConf) extends ShuffleDataIO {
     }
   }
 
-  override def writeSupport(): ShuffleWriteSupport =
-      (appId: String, shuffleId: Int, mapId: Int, partitionId: Int) => new ShufflePartitionWriter {
-    private val file = resolvePartitionFile(appId, shuffleId, mapId, partitionId)
+  override def writeSupport(): ShuffleWriteSupport = {
+    (appId: String, shuffleId: Int, mapId: Int) => new ShuffleMapOutputWriter {
+      override def newPartitionWriter(partitionId: Int): ShufflePartitionWriter = {
+        new ShufflePartitionWriter {
+          override def appendBytesToPartition(streamReadingBytesToAppend: InputStream): Unit = {
+            val shuffleFile = resolvePartitionFile(appId, shuffleId, mapId, partitionId)
+            if (!shuffleFile.getParentFile.isDirectory && !shuffleFile.getParentFile.mkdirs()) {
+              throw new IllegalStateException(
+                s"Failed to make parent dir ${shuffleFile.getParent}")
+            }
+            Files.write(
+              shuffleFile.toPath,
+              IOUtils.toByteArray(streamReadingBytesToAppend),
+              StandardOpenOption.CREATE,
+              StandardOpenOption.APPEND)
+          }
 
-    override def appendBytesToPartition(streamReadingBytesToAppend: InputStream): Unit = {
-      if (!file.isFile) {
-        if (!file.getParentFile.isDirectory && !file.getParentFile.mkdirs()) {
-          throw new IOException("Failed to create parent directory for shuffle file.")
-        }
-        if (!file.createNewFile()) {
-          throw new IOException("Failed to create new shuffle file.")
+          override def commitAndGetTotalLength(): Long =
+            resolvePartitionFile(appId, shuffleId, mapId, partitionId).length
+
+          override def abort(failureReason: Exception): Unit = {}
         }
       }
-      Files.write(
-        file.toPath,
-        IOUtils.toByteArray(streamReadingBytesToAppend),
-        StandardOpenOption.APPEND)
-    }
 
-    override def commitAndGetTotalLength(): Long = file.length()
+      override def commitAllPartitions(): Unit = {}
 
-    override def abort(failureReason: Exception): Unit = {
-      file.delete()
+      override def abort(exception: Exception): Unit = {}
     }
   }
 

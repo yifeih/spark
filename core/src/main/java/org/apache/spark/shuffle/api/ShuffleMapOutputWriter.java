@@ -17,7 +17,11 @@
 
 package org.apache.spark.shuffle.api;
 
-public interface ShuffleWriteSupport {
+public interface ShuffleMapOutputWriter {
 
-  ShuffleMapOutputWriter newMapOutputWriter(String appId, int shuffleId, int mapId);
+  ShufflePartitionWriter newPartitionWriter(int partitionId);
+
+  void commitAllPartitions();
+
+  void abort(Exception exception);
 }

@@ -730,44 +730,25 @@ private[spark] class ExternalSorter[K, V, C](
 
     // Track location of each range in the output file
     val lengths = new Array[Long](numPartitions)
+    val mapOutputWriter = writeSupport.newMapOutputWriter(conf.getAppId, shuffleId, mapId)
     val writer = new ShufflePartitionObjectWriter(
       Math.min(serializerBatchSize, Integer.MAX_VALUE).toInt,
       serInstance,
-      conf.getAppId,
-      mapId,
-      shuffleId,
-      writeSupport)
+      mapOutputWriter)
 
-    if (spills.isEmpty) {
-      // Case where we only have in-memory data
-      val collection = if (aggregator.isDefined) map else buffer
-      val it = collection.destructiveSortedWritablePartitionedIterator(comparator)
-      while (it.hasNext()) {
-        val partitionId = it.nextPartition()
-        writer.startNewPartition(partitionId)
-        try {
-          while (it.hasNext && it.nextPartition() == partitionId) {
-            it.writeNext(writer)
-          }
-          lengths(partitionId) = writer.commitCurrentPartition()
-        } catch {
-          case e: Exception =>
-            util.Utils.tryLogNonFatalError {
-              writer.abortCurrentPartition(e)
-            }
-            throw e
-        }
-      }
-    } else {
-      // We must perform merge-sort; get an iterator by partition and write everything directly.
-      for ((id, elements) <- this.partitionedIterator) {
-        if (elements.hasNext) {
-          writer.startNewPartition(id)
+    try {
+      if (spills.isEmpty) {
+        // Case where we only have in-memory data
+        val collection = if (aggregator.isDefined) map else buffer
+        val it = collection.destructiveSortedWritablePartitionedIterator(comparator)
+        while (it.hasNext()) {
+          val partitionId = it.nextPartition()
+          writer.startNewPartition(partitionId)
           try {
-            for (elem <- elements) {
-              writer.write(elem._1, elem._2)
+            while (it.hasNext && it.nextPartition() == partitionId) {
+              it.writeNext(writer)
             }
-            lengths(id) = writer.commitCurrentPartition()
+            lengths(partitionId) = writer.commitCurrentPartition()
           } catch {
             case e: Exception =>
               util.Utils.tryLogNonFatalError {
@@ -776,7 +757,33 @@ private[spark] class ExternalSorter[K, V, C](
               throw e
           }
         }
+      } else {
+        // We must perform merge-sort; get an iterator by partition and write everything directly.
+        for ((id, elements) <- this.partitionedIterator) {
+          if (elements.hasNext) {
+            writer.startNewPartition(id)
+            try {
+              for (elem <- elements) {
+                writer.write(elem._1, elem._2)
+              }
+              lengths(id) = writer.commitCurrentPartition()
+            } catch {
+              case e: Exception =>
+                util.Utils.tryLogNonFatalError {
+                  writer.abortCurrentPartition(e)
+                }
+                throw e
+            }
+          }
+        }
       }
+      mapOutputWriter.commitAllPartitions()
+    } catch {
+      case e: Exception =>
+        util.Utils.tryLogNonFatalError {
+          writer.abortCurrentPartition(e)
+          mapOutputWriter.abort(e)
+        }
     }
 
     context.taskMetrics().incMemoryBytesSpilled(memoryBytesSpilled)

@@ -51,6 +51,7 @@ import org.apache.spark.serializer.SerializationStream;
 import org.apache.spark.serializer.SerializerInstance;
 import org.apache.spark.shuffle.IndexShuffleBlockResolver;
 import org.apache.spark.shuffle.ShuffleWriter;
+import org.apache.spark.shuffle.api.ShuffleMapOutputWriter;
 import org.apache.spark.shuffle.api.ShufflePartitionWriter;
 import org.apache.spark.shuffle.api.ShuffleWriteSupport;
 import org.apache.spark.storage.BlockManager;
@@ -521,14 +522,15 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     final InputStream[] spillInputStreams = new InputStream[spills.length];
 
     boolean threwException = true;
+    ShuffleMapOutputWriter mapOutputWriter = pluggableWriteSupport.newMapOutputWriter(
+        sparkConf.getAppId(), shuffleId, mapId);
     try {
       for (int i = 0; i < spills.length; i++) {
         spillInputStreams[i] = new NioBufferedFileInputStream(
             spills[i].file, inputBufferSizeInBytes);
       }
       for (int partition = 0; partition < numPartitions; partition++) {
-        ShufflePartitionWriter writer = pluggableWriteSupport.newPartitionWriter(
-            sparkConf.getAppId(), shuffleId, mapId, partition);
+        ShufflePartitionWriter writer = mapOutputWriter.newPartitionWriter(partition);
         try {
           for (int i = 0; i < spills.length; i++) {
             final long partitionLengthInSpill = spills[i].partitionLengths[partition];
@@ -550,10 +552,23 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           partitionLengths[partition] = writer.commitAndGetTotalLength();
           writeMetrics.incBytesWritten(partitionLengths[partition]);
         } catch (Exception e) {
-          writer.abort(e);
+          try {
+            writer.abort(e);
+          } catch (Exception e2) {
+            logger.warn("Failed to abort partition writer.", e2);
+          }
+          throw e;
         }
       }
+      mapOutputWriter.commitAllPartitions();
       threwException = false;
+    } catch (Exception e) {
+      try {
+        mapOutputWriter.abort(e);
+      } catch (Exception e2) {
+        logger.warn("Failed to abort map output writer.", e2);
+      }
+      throw e;
     } finally {
       // To avoid masking exceptions that caused us to prematurely enter the finally block, only
       // throw exceptions during cleanup if threwException == false.
@@ -573,10 +588,11 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     InputStream spillInputStream = new NioBufferedFileInputStream(
             spillInfo.file,
             inputBufferSizeInBytes);
+    ShuffleMapOutputWriter mapOutputWriter = pluggableWriteSupport.newMapOutputWriter(
+        sparkConf.getAppId(), shuffleId, mapId);
     try {
       for (int partition = 0; partition < numPartitions; partition++) {
-        ShufflePartitionWriter writer = pluggableWriteSupport.newPartitionWriter(
-            sparkConf.getAppId(), shuffleId, mapId, partition);
+        ShufflePartitionWriter writer = mapOutputWriter.newPartitionWriter(partition);
         InputStream partitionInputStream = new LimitedInputStream(spillInputStream,
             spillInfo.partitionLengths[partition], false);
         try {
@@ -586,12 +602,26 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
             partitionInputStream = compressionCodec.compressedInputStream(partitionInputStream);
           }
           writer.appendBytesToPartition(partitionInputStream);
+        } catch (Exception e) {
+          try {
+            writer.abort(e);
+          } catch (Exception e2) {
+            logger.warn("Failed to abort partition writer.", e2);
+          }
+          throw e;
         } finally {
           partitionInputStream.close();
         }
         writeMetrics.incBytesWritten(writer.commitAndGetTotalLength());
       }
       threwException = false;
+    } catch (Exception e) {
+      try {
+        mapOutputWriter.abort(e);
+      } catch (Exception e2) {
+        logger.warn("Exception thrown while aborting map output writer.", e2);
+      }
+      throw e;
     } finally {
       Closeables.close(spillInputStream, threwException);
     }
