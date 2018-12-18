@@ -19,7 +19,6 @@ package org.apache.spark
 
 import java.io._
 import java.nio.file.Paths
-
 import javax.ws.rs.core.UriBuilder
 
 import org.apache.spark.shuffle.api._
