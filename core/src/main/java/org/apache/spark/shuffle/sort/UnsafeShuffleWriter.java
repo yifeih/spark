@@ -532,20 +532,22 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       for (int partition = 0; partition < numPartitions; partition++) {
         ShufflePartitionWriter writer = mapOutputWriter.newPartitionWriter(partition);
         try {
-          for (int i = 0; i < spills.length; i++) {
-            final long partitionLengthInSpill = spills[i].partitionLengths[partition];
-            if (partitionLengthInSpill > 0) {
-              InputStream partitionInputStream = new LimitedInputStream(spillInputStreams[i],
-                  partitionLengthInSpill, false);
-              try {
-                partitionInputStream = blockManager.serializerManager().wrapForEncryption(
-                    partitionInputStream);
-                if (compressionCodec != null) {
-                  partitionInputStream = compressionCodec.compressedInputStream(partitionInputStream);
+          try (OutputStream partitionOutput = writer.openPartitionStream()) {
+            for (int i = 0; i < spills.length; i++) {
+              final long partitionLengthInSpill = spills[i].partitionLengths[partition];
+              if (partitionLengthInSpill > 0) {
+                InputStream partitionInputStream = new LimitedInputStream(spillInputStreams[i],
+                    partitionLengthInSpill, false);
+                try {
+                  partitionInputStream = blockManager.serializerManager().wrapForEncryption(
+                      partitionInputStream);
+                  if (compressionCodec != null) {
+                    partitionInputStream = compressionCodec.compressedInputStream(partitionInputStream);
+                  }
+                  Utils.copyStream(partitionInputStream, partitionOutput, false, false);
+                } finally {
+                  partitionInputStream.close();
                 }
-                writer.appendBytesToPartition(partitionInputStream);
-              } finally {
-                partitionInputStream.close();
               }
             }
           }
@@ -601,7 +603,9 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           if (compressionCodec != null) {
             partitionInputStream = compressionCodec.compressedInputStream(partitionInputStream);
           }
-          writer.appendBytesToPartition(partitionInputStream);
+          try (OutputStream partitionOutput = writer.openPartitionStream()) {
+            Utils.copyStream(partitionInputStream, partitionOutput, false, false);
+          }
         } catch (Exception e) {
           try {
             writer.abort(e);

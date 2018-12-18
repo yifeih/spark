@@ -659,7 +659,6 @@ public class UnsafeShuffleWriterSuite {
 
       return new ShuffleMapOutputWriter() {
 
-
         @Override
         public ShufflePartitionWriter newPartitionWriter(int partitionId) {
           return new ShufflePartitionWriter() {
@@ -669,23 +668,12 @@ public class UnsafeShuffleWriterSuite {
                     CompressionCodec$.MODULE$.createCodec(conf).compressedOutputStream(byteBuffer));
 
             @Override
-            public void appendBytesToPartition(InputStream streamReadingBytesToAppend) {
-              try {
-                byte[] bytes = IOUtils.toByteArray(streamReadingBytesToAppend);
-                partitionBuffer.write(bytes, 0, bytes.length);
-              } catch (IOException e) {
-                throw new RuntimeException(e);
-              }
+            public OutputStream openPartitionStream() {
+              return partitionBuffer;
             }
 
             @Override
             public long commitAndGetTotalLength() {
-              try {
-                partitionBuffer.flush();
-                partitionBuffer.close();
-              } catch (IOException e) {
-                throw new RuntimeException(e);
-              }
               byte[] partitionBytes = byteBuffer.toByteArray();
               try {
                 Files.write(mergedOutputFile.toPath(), partitionBytes, StandardOpenOption.APPEND);

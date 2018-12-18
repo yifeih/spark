@@ -17,11 +17,10 @@
 
 package org.apache.spark
 
-import java.io.{File, FileInputStream, IOException, InputStream}
-import java.nio.file.{Files, Paths, StandardOpenOption}
+import java.io._
+import java.nio.file.Paths
 
 import javax.ws.rs.core.UriBuilder
-import org.apache.commons.io.IOUtils
 
 import org.apache.spark.shuffle.api._
 import org.apache.spark.util.Utils
@@ -42,17 +41,13 @@ class SplitFilesShuffleIO(conf: SparkConf) extends ShuffleDataIO {
     (appId: String, shuffleId: Int, mapId: Int) => new ShuffleMapOutputWriter {
       override def newPartitionWriter(partitionId: Int): ShufflePartitionWriter = {
         new ShufflePartitionWriter {
-          override def appendBytesToPartition(streamReadingBytesToAppend: InputStream): Unit = {
+          override def openPartitionStream(): OutputStream = {
             val shuffleFile = resolvePartitionFile(appId, shuffleId, mapId, partitionId)
             if (!shuffleFile.getParentFile.isDirectory && !shuffleFile.getParentFile.mkdirs()) {
               throw new IllegalStateException(
                 s"Failed to make parent dir ${shuffleFile.getParent}")
             }
-            Files.write(
-              shuffleFile.toPath,
-              IOUtils.toByteArray(streamReadingBytesToAppend),
-              StandardOpenOption.CREATE,
-              StandardOpenOption.APPEND)
+            new FileOutputStream(shuffleFile)
           }
 
           override def commitAndGetTotalLength(): Long =
@@ -70,6 +65,7 @@ class SplitFilesShuffleIO(conf: SparkConf) extends ShuffleDataIO {
 
   private def resolvePartitionFile(
       appId: String, shuffleId: Int, mapId: Int, reduceId: Int): File = {
+  import java.io.OutputStream
     Paths.get(UriBuilder.fromUri(shuffleDir.toURI)
       .path(appId)
       .path(shuffleId.toString)

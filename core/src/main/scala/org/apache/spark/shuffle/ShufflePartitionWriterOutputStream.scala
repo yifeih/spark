@@ -22,7 +22,7 @@ import java.nio.ByteBuffer
 
 import org.apache.spark.network.util.LimitedInputStream
 import org.apache.spark.shuffle.api.ShufflePartitionWriter
-import org.apache.spark.util.ByteBufferInputStream
+import org.apache.spark.util.{ByteBufferInputStream, Utils}
 
 class ShufflePartitionWriterOutputStream(
     partitionWriter: ShufflePartitionWriter, buffer: ByteBuffer, bufferSize: Int)
@@ -30,27 +30,41 @@ class ShufflePartitionWriterOutputStream(
 
   private var currentChunkSize = 0
   private val bufferForRead = buffer.asReadOnlyBuffer()
+  private var underlyingOutputStream: OutputStream = _
 
   override def write(b: Int): Unit = {
     buffer.putInt(b)
     currentChunkSize += 1
     if (currentChunkSize == bufferSize) {
-      flush()
+      pushBufferedBytesToUnderlyingOutput()
     }
   }
 
-  override def flush(): Unit = {
+  private def pushBufferedBytesToUnderlyingOutput(): Unit = {
     bufferForRead.reset()
     var bufferInputStream: InputStream = new ByteBufferInputStream(bufferForRead)
     if (currentChunkSize < bufferSize) {
       bufferInputStream = new LimitedInputStream(bufferInputStream, currentChunkSize)
     }
-    partitionWriter.appendBytesToPartition(bufferInputStream)
+    if (underlyingOutputStream == null) {
+      underlyingOutputStream = partitionWriter.openPartitionStream()
+    }
+    Utils.copyStream(bufferInputStream, underlyingOutputStream, false, false)
     buffer.reset()
     currentChunkSize = 0
   }
 
+  override def flush(): Unit = {
+    pushBufferedBytesToUnderlyingOutput()
+    if (underlyingOutputStream != null) {
+      underlyingOutputStream.flush();
+    }
+  }
+
   override def close(): Unit = {
     flush()
+    if (underlyingOutputStream != null) {
+      underlyingOutputStream.close()
+    }
   }
 }

@@ -18,6 +18,7 @@
 package org.apache.spark.shuffle.api;
 
 import java.io.InputStream;
+import java.io.OutputStream;
 
 /**
  * Responsible for appending bytes to a partition via passing in input streams incrementally.
@@ -25,13 +26,9 @@ import java.io.InputStream;
 public interface ShufflePartitionWriter {
 
   /**
-   * Another option is to have this take no parameters and return an OutputStream. But we choose
-   * to pass an InputStream directly because the writer may have different opinions about how
-   * to forward the data to the backing system. As an example, the writer can choose to take each
-   * byte from the incoming input stream and multicast ot to multiple backends for replication.
-   * So OutputStream is too restrictive of an API.
+   * Return a stream that should persist the bytes for this partition.
    */
-  void appendBytesToPartition(InputStream streamReadingBytesToAppend);
+  OutputStream openPartitionStream();
 
   /**
    * Indicate that the partition was written successfully and there are no more incoming bytes. Returns

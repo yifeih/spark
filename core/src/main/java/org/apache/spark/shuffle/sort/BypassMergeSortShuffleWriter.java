@@ -21,6 +21,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import javax.annotation.Nullable;
 
 import scala.None$;
@@ -247,7 +248,9 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           boolean copyThrewException = true;
           ShufflePartitionWriter writer = mapOutputWriter.newPartitionWriter(i);
           try {
-            writer.appendBytesToPartition(in);
+            try (OutputStream out = writer.openPartitionStream()) {
+              Utils.copyStream(in, out, false, false);
+            }
             lengths[i] = writer.commitAndGetTotalLength();
             copyThrewException = false;
           } catch (Exception e) {
