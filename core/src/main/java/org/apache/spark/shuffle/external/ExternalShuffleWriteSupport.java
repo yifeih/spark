@@ -27,32 +27,18 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
     private final String hostname;
     private final int port;
     private final String execId;
+    private final String driverHostPort;
 
     public ExternalShuffleWriteSupport(
-            TransportConf conf, boolean authEnabled, SecretKeyHolder secretKeyHolder, String hostname, int port, String execId) {
+            TransportConf conf, boolean authEnabled, SecretKeyHolder secretKeyHolder,
+            String hostname, int port, String execId, String driverHostPort) {
         this.conf = conf;
         this.authEnabled = authEnabled;
         this.secretKeyHolder = secretKeyHolder;
         this.hostname = hostname;
         this.port = port;
         this.execId = execId;
-    }
-
-    @Override
-    public ShufflePartitionWriter newPartitionWriter(String appId, int shuffleId, int mapId, int partitionId) {
-        TransportContext context = new TransportContext(conf, new NoOpRpcHandler(), true, true);
-        List<TransportClientBootstrap> bootstraps = Lists.newArrayList();
-        if (authEnabled) {
-            bootstraps.add(new AuthClientBootstrap(conf, appId, secretKeyHolder));
-        }
-        TransportClientFactory clientFactory = context.createClientFactory(bootstraps);
-        try {
-            TransportClient client = clientFactory.createClient(hostname, port);
-            return new ExternalShufflePartitionWriter(client, appId, execId, shuffleId, mapId, partitionId);
-        } catch (Exception e) {
-            logger.error("Encountered error while creating transport client");
-            throw new RuntimeException(e); // what is standard practice here?
-        }
+        this.driverHostPort = driverHostPort;
     }
 
     @Override
@@ -68,7 +54,8 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
             public ShufflePartitionWriter newPartitionWriter(int partitionId) {
                 try {
                     TransportClient client = clientFactory.createClient(hostname, port);
-                    return new ExternalShufflePartitionWriter(client, appId, execId, shuffleId, mapId, partitionId);
+                    return new ExternalShufflePartitionWriter(
+                            client, appId, execId, shuffleId, mapId, partitionId, driverHostPort);
                 } catch (Exception e) {
                     logger.error("Encountered error while creating transport client");
                     throw new RuntimeException(e); // what is standard practice here?
@@ -77,13 +64,13 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
 
             @Override
             public void commitAllPartitions() {
-
+                logger.info("Commiting all partitions");
             }
 
             @Override
             public void abort(Exception exception) {
-
+                logger.error("Encountered error while attempting to all partitions to ESS", exception);
             }
-        }
+        };
     }
 }

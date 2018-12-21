@@ -182,6 +182,9 @@ package object config {
   private[spark] val SHUFFLE_SERVICE_ENABLED =
     ConfigBuilder("spark.shuffle.service.enabled").booleanConf.createWithDefault(false)
 
+  private[spark] val K8S_SHUFFLE_SERVICE_ENABLED =
+    ConfigBuilder("spark.k8s.shuffle.service.enabled").booleanConf.createWithDefault(false)
+
   private[spark] val SHUFFLE_SERVICE_PORT =
     ConfigBuilder("spark.shuffle.service.port").intConf.createWithDefault(7337)
 

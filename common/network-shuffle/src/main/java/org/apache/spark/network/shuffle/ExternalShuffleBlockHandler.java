@@ -34,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import org.apache.spark.network.buffer.ManagedBuffer;
+import org.apache.spark.network.client.StreamCallbackWithID;
 import org.apache.spark.network.client.RpcResponseCallback;
 import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.server.OneForOneStreamManager;
@@ -79,6 +80,22 @@ public class ExternalShuffleBlockHandler extends RpcHandler {
   public void receive(TransportClient client, ByteBuffer message, RpcResponseCallback callback) {
     BlockTransferMessage msgObj = BlockTransferMessage.Decoder.fromByteBuffer(message);
     handleMessage(msgObj, client, callback);
+  }
+
+  @Override
+  public StreamCallbackWithID receiveStream(
+          TransportClient client,
+          ByteBuffer messageHeader,
+          RpcResponseCallback callback) {
+    BlockTransferMessage header = BlockTransferMessage.Decoder.fromByteBuffer(messageHeader);
+    return handleStream(header, client, callback);
+  }
+
+  protected StreamCallbackWithID handleStream(
+          BlockTransferMessage header,
+          TransportClient client,
+          RpcResponseCallback callback) {
+      throw new UnsupportedOperationException("Unexpected message header: " + header);
   }
 
   protected void handleMessage(
@@ -181,6 +198,10 @@ public class ExternalShuffleBlockHandler extends RpcHandler {
     private final Timer registerExecutorRequestLatencyMillis = new Timer();
     // Block transfer rate in byte per second
     private final Meter blockTransferRateBytes = new Meter();
+    // Partition upload latency in ms
+    private final Timer uploadPartitionkStreamMillis = new Timer();
+    // Partition read latency in ms
+    private final Timer openPartitionMillis = new Timer();
 
     private ShuffleMetrics() {
       allMetrics = new HashMap<>();
@@ -189,6 +210,8 @@ public class ExternalShuffleBlockHandler extends RpcHandler {
       allMetrics.put("blockTransferRateBytes", blockTransferRateBytes);
       allMetrics.put("registeredExecutorsSize",
                      (Gauge<Integer>) () -> blockManager.getRegisteredExecutorsSize());
+      allMetrics.put("uploadPartitionkStreamMillis", uploadPartitionkStreamMillis);
+      allMetrics.put("openPartitionMillis", openPartitionMillis);
     }
 
     @Override

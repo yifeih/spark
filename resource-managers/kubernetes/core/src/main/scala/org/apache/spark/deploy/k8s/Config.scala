@@ -289,6 +289,26 @@ private[spark] object Config extends Logging {
       .booleanConf
       .createWithDefault(true)
 
+  val KUBERNETES_REMOTE_SHUFFLE_SERVICE_PODS_NAMESPACE =
+    ConfigBuilder("spark.kubernetes.shuffle.service.remote.pods.namespace")
+      .doc("Namespace of the pods that are running the shuffle service instances for backing up" +
+        " shuffle data.")
+      .stringConf
+      .createOptional
+
+  val KUBERNETES_REMOTE_SHUFFLE_SERVICE_PORT =
+    ConfigBuilder("spark.kubernetes.shuffle.service.remote.port")
+      .doc("Port of the shuffle services that will back up the application's shuffle data.")
+      .intConf
+      .createWithDefault(7337)
+
+  val KUBERNETES_REMOTE_SHUFFLE_SERVICE_CLEANUP_INTERVAL =
+    ConfigBuilder("spark.kubernetes.shuffle.service.cleanup.interval")
+      .doc("Cleanup interval for the shuffle service to take down an app id")
+      .timeConf(TimeUnit.SECONDS)
+      .createWithDefaultString("30s")
+
+
   val KUBERNETES_DRIVER_LABEL_PREFIX = "spark.kubernetes.driver.label."
   val KUBERNETES_DRIVER_ANNOTATION_PREFIX = "spark.kubernetes.driver.annotation."
   val KUBERNETES_DRIVER_SECRETS_PREFIX = "spark.kubernetes.driver.secrets."
@@ -313,4 +333,7 @@ private[spark] object Config extends Logging {
   val KUBERNETES_VOLUMES_OPTIONS_SIZE_LIMIT_KEY = "options.sizeLimit"
 
   val KUBERNETES_DRIVER_ENV_PREFIX = "spark.kubernetes.driverEnv."
+
+  val KUBERNETES_REMOTE_SHUFFLE_SERVICE_LABELS =
+    "spark.kubernetes.shuffle.service.remote.label."
 }

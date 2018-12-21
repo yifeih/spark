@@ -21,13 +21,15 @@ import com.google.common.base.Objects;
 import io.netty.buffer.ByteBuf;
 import org.apache.spark.network.protocol.Encoders;
 
+// Needed by ScalaDoc. See SPARK-7726
+import static org.apache.spark.network.shuffle.protocol.BlockTransferMessage.Type;
+
 /**
  * Upload shuffle partition request to the External Shuffle Service.
  * This request should also include the driverHostPort for the sake of
  * setting up a driver heartbeat to monitor heartbeat
  */
 public class UploadShufflePartitionStream extends BlockTransferMessage {
-    public final String driverHostPort;
     public final String appId;
     public final String execId;
     public final int shuffleId;
@@ -35,13 +37,11 @@ public class UploadShufflePartitionStream extends BlockTransferMessage {
     public final int partitionId;
 
     public UploadShufflePartitionStream(
-            String driverHostPort,
             String appId,
             String execId,
             int shuffleId,
             int mapId,
             int partitionId) {
-        this.driverHostPort = driverHostPort;
         this.appId = appId;
         this.execId = execId;
         this.shuffleId = shuffleId;
@@ -54,7 +54,6 @@ public class UploadShufflePartitionStream extends BlockTransferMessage {
         if (other != null && other instanceof UploadShufflePartitionStream) {
             UploadShufflePartitionStream o = (UploadShufflePartitionStream) other;
             return Objects.equal(appId, o.appId)
-                    && driverHostPort == o.driverHostPort
                     && execId == o.execId
                     && shuffleId == o.shuffleId
                     && mapId == o.mapId
@@ -70,13 +69,12 @@ public class UploadShufflePartitionStream extends BlockTransferMessage {
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(driverHostPort, appId, execId, shuffleId, mapId, partitionId);
+        return Objects.hashCode(appId, execId, shuffleId, mapId, partitionId);
     }
 
     @Override
     public String toString() {
         return Objects.toStringHelper(this)
-                .add("driverHostPort", driverHostPort)
                 .add("appId", appId)
                 .add("execId", execId)
                 .add("shuffleId", shuffleId)
@@ -86,13 +84,12 @@ public class UploadShufflePartitionStream extends BlockTransferMessage {
 
     @Override
     public int encodedLength() {
-        return  Encoders.Strings.encodedLength(driverHostPort) + Encoders.Strings.encodedLength(appId) +
+        return Encoders.Strings.encodedLength(appId) +
                 Encoders.Strings.encodedLength(execId) + 4 + 4 + 4;
     }
 
     @Override
     public void encode(ByteBuf buf) {
-        Encoders.Strings.encode(buf, driverHostPort);
         Encoders.Strings.encode(buf, appId);
         Encoders.Strings.encode(buf, execId);
         buf.writeInt(shuffleId);
@@ -101,12 +98,11 @@ public class UploadShufflePartitionStream extends BlockTransferMessage {
     }
 
     public static UploadShufflePartitionStream decode(ByteBuf buf) {
-        String driverHostPort = Encoders.Strings.decode(buf);
         String appId = Encoders.Strings.decode(buf);
         String execId = Encoders.Strings.decode(buf);
         int shuffleId = buf.readInt();
         int mapId = buf.readInt();
         int partitionId = buf.readInt();
-        return new UploadShufflePartitionStream(driverHostPort, appId, execId, shuffleId, mapId, partitionId);
+        return new UploadShufflePartitionStream(appId, execId, shuffleId, mapId, partitionId);
     }
 }

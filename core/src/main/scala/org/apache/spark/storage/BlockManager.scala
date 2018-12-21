@@ -44,6 +44,7 @@ import org.apache.spark.network.buffer.ManagedBuffer
 import org.apache.spark.network.client.StreamCallbackWithID
 import org.apache.spark.network.netty.SparkTransportConf
 import org.apache.spark.network.shuffle._
+import org.apache.spark.network.shuffle.k8s.KubernetesExternalShuffleClient
 import org.apache.spark.network.shuffle.protocol.ExecutorShuffleInfo
 import org.apache.spark.network.util.TransportConf
 import org.apache.spark.rpc.RpcEnv
@@ -130,15 +131,22 @@ private[spark] class BlockManager(
     numUsableCores: Int)
   extends BlockDataManager with BlockEvictionHandler with Logging {
 
-  private[spark] val externalShuffleServiceEnabled =
+  private[spark] val externalNonK8sShuffleService =
     conf.get(config.SHUFFLE_SERVICE_ENABLED)
+
+  private[spark] val externalk8sShuffleServiceEnabled =
+    conf.get(config.K8S_SHUFFLE_SERVICE_ENABLED)
+
+  private[spark] val externalShuffleServiceEnabled =
+    externalNonK8sShuffleService || externalk8sShuffleServiceEnabled
+
   private val remoteReadNioBufferConversion =
     conf.getBoolean("spark.network.remoteReadNioBufferConversion", false)
 
   val diskBlockManager = {
     // Only perform cleanup if an external service is not serving our shuffle files.
-    val deleteFilesOnStop =
-      !externalShuffleServiceEnabled || executorId == SparkContext.DRIVER_IDENTIFIER
+    val deleteFilesOnStop = !externalShuffleServiceEnabled ||
+      executorId == SparkContext.DRIVER_IDENTIFIER
     new DiskBlockManager(conf, deleteFilesOnStop)
   }
 
@@ -184,7 +192,11 @@ private[spark] class BlockManager(
 
   // Client to read other executors' shuffle files. This is either an external service, or just the
   // standard BlockTransferService to directly connect to other Executors.
-  private[spark] val shuffleClient = if (externalShuffleServiceEnabled) {
+  private[spark] val shuffleClient = if (externalk8sShuffleServiceEnabled) {
+    val transConf = SparkTransportConf.fromSparkConf(conf, "shuffle", numUsableCores)
+    new KubernetesExternalShuffleClient(transConf, securityManager,
+      securityManager.isAuthenticationEnabled(), conf.get(config.SHUFFLE_REGISTRATION_TIMEOUT))
+  } else if (externalNonK8sShuffleService) {
     val transConf = SparkTransportConf.fromSparkConf(conf, "shuffle", numUsableCores)
     new ExternalShuffleClient(transConf, securityManager,
       securityManager.isAuthenticationEnabled(), conf.get(config.SHUFFLE_REGISTRATION_TIMEOUT))
@@ -252,6 +264,7 @@ private[spark] class BlockManager(
 
     blockManagerId = if (idFromMaster != null) idFromMaster else id
 
+    // TODO: Customize so that the shuffleServiceID is pointing to K8s
     shuffleServerId = if (externalShuffleServiceEnabled) {
       logInfo(s"external shuffle service port = $externalShuffleServicePort")
       BlockManagerId(executorId, blockTransferService.hostName, externalShuffleServicePort)
@@ -259,8 +272,21 @@ private[spark] class BlockManager(
       blockManagerId
     }
 
-    // Register Executors' configuration with the local shuffle service, if one should exist.
-    if (externalShuffleServiceEnabled && !blockManagerId.isDriver) {
+    if (externalk8sShuffleServiceEnabled && blockManagerId.isDriver) {
+      // Register Drivers' configuration with the k8s shuffle service
+      shuffleClient.asInstanceOf[KubernetesExternalShuffleClient]
+        .registerDriverWithShuffleService(
+          shuffleServerId.host, shuffleServerId.port,
+          conf.getTimeAsMs("spark.storage.blockManagerSlaveTimeoutMs",
+            s"${conf.getTimeAsSeconds("spark.network.timeout", "120s")}s"),
+          conf.get(config.EXECUTOR_HEARTBEAT_INTERVAL))
+    } else if (externalk8sShuffleServiceEnabled && !blockManagerId.isDriver) {
+      shuffleClient.asInstanceOf[KubernetesExternalShuffleClient]
+        .registerExecutorWithShuffleService(
+          shuffleServerId.host, shuffleServerId.port, appId,
+          shuffleServerId.executorId, shuffleManager.getClass.getName)
+    } else if (externalNonK8sShuffleService && !blockManagerId.isDriver) {
+      // Register Executors' configuration with the local shuffle service, if one should exist.
       registerWithExternalShuffleServer()
     }
 

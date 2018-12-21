@@ -17,7 +17,6 @@
 
 package org.apache.spark.shuffle.api;
 
-import java.io.InputStream;
 import java.io.OutputStream;
 
 /**

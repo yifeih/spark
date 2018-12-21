@@ -4,6 +4,9 @@ import com.google.common.base.Objects;
 import io.netty.buffer.ByteBuf;
 import org.apache.spark.network.protocol.Encoders;
 
+// Needed by ScalaDoc. See SPARK-7726
+import static org.apache.spark.network.shuffle.protocol.BlockTransferMessage.Type;
+
 public class OpenShufflePartition extends BlockTransferMessage {
     public final String appId;
     public final String execId;
@@ -11,7 +14,8 @@ public class OpenShufflePartition extends BlockTransferMessage {
     public final int mapId;
     public final int partitionId;
 
-    public OpenShufflePartition(String appId, String execId, int shuffleId, int mapId, int partitionId) {
+    public OpenShufflePartition(
+        String appId, String execId, int shuffleId, int mapId, int partitionId) {
         this.appId = appId;
         this.execId = execId;
         this.shuffleId = shuffleId;
@@ -34,7 +38,7 @@ public class OpenShufflePartition extends BlockTransferMessage {
 
     @Override
     protected Type type() {
-        return null;
+        return Type.OPEN_SHUFFLE_PARTITION;
     }
 
     @Override
@@ -54,7 +58,8 @@ public class OpenShufflePartition extends BlockTransferMessage {
 
     @Override
     public int encodedLength() {
-        return Encoders.Strings.encodedLength(appId) + Encoders.Strings.encodedLength(execId) + 4 + 4 + 4;
+        return Encoders.Strings.encodedLength(appId) +
+                Encoders.Strings.encodedLength(execId) + 4 + 4 + 4;
     }
 
     @Override

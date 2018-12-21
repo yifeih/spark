@@ -15,19 +15,24 @@ public class ExternalShuffleDataIO implements ShuffleDataIO {
     private static final String SHUFFLE_SERVICE_PORT_CONFIG = "spark.shuffle.service.port";
     private static final String DEFAULT_SHUFFLE_PORT = "7337";
 
+    private static final SparkEnv sparkEnv = SparkEnv.get();
+
     private final SparkConf sparkConf;
     private final TransportConf conf;
     private final SecurityManager securityManager;
     private final String hostname;
     private final int port;
     private final String execId;
+    private final String driverHostName;
 
     public ExternalShuffleDataIO(
             SparkConf sparkConf) {
         this.sparkConf = sparkConf;
         this.conf = SparkTransportConf.fromSparkConf(sparkConf, "shuffle", 2);
-        this.securityManager = SparkEnv.get().securityManager();
-        this.hostname = SparkEnv.get().blockManager().blockTransferService().hostName();
+
+        this.securityManager = sparkEnv.securityManager();
+        this.hostname = sparkEnv.blockManager().blockTransferService().hostName();
+        this.driverHostName = sparkEnv.blockManager().master().driverEndpoint().address().hostPort();
 
         int tmpPort = Integer.parseInt(
                 Utils.getSparkOrYarnConfig(sparkConf, SHUFFLE_SERVICE_PORT_CONFIG, DEFAULT_SHUFFLE_PORT));
@@ -53,6 +58,7 @@ public class ExternalShuffleDataIO implements ShuffleDataIO {
     @Override
     public ShuffleWriteSupport writeSupport() {
         return new ExternalShuffleWriteSupport(
-                conf, securityManager.isAuthenticationEnabled(), securityManager, hostname, port, execId);
+                conf, securityManager.isAuthenticationEnabled(),
+                securityManager, hostname, port, execId, driverHostName);
     }
 }

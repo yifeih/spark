@@ -19,13 +19,14 @@ package org.apache.spark.network.shuffle;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.util.regex.Pattern;
 import java.util.*;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -69,6 +70,9 @@ public class ExternalShuffleBlockResolver {
   private static final String APP_KEY_PREFIX = "AppExecShuffleInfo";
   private static final StoreVersion CURRENT_VERSION = new StoreVersion(1, 0);
 
+  // TODO: Dont necessarily write to local
+  private final File shuffleDir;
+
   private static final Pattern MULTIPLE_SEPARATORS = Pattern.compile(File.separator + "{2,}");
 
   // Map containing all registered executors' metadata.
@@ -92,8 +96,8 @@ public class ExternalShuffleBlockResolver {
   final DB db;
 
   private final List<String> knownManagers = Arrays.asList(
-    "org.apache.spark.shuffle.sort.SortShuffleManager",
-    "org.apache.spark.shuffle.unsafe.UnsafeShuffleManager");
+          "org.apache.spark.shuffle.sort.SortShuffleManager",
+          "org.apache.spark.shuffle.unsafe.UnsafeShuffleManager");
 
   public ExternalShuffleBlockResolver(TransportConf conf, File registeredExecutorFile)
       throws IOException {
@@ -131,12 +135,17 @@ public class ExternalShuffleBlockResolver {
     } else {
       executors = Maps.newConcurrentMap();
     }
+
+    // TODO: Remove local writes
+    this.shuffleDir = Files.createTempDirectory("spark-shuffle-dir").toFile();
+
     this.directoryCleaner = directoryCleaner;
   }
 
   public int getRegisteredExecutorsSize() {
     return executors.size();
   }
+
 
   /** Registers a new Executor with all the configuration we need to find its shuffle files. */
   public void registerExecutor(
@@ -178,6 +187,8 @@ public class ExternalShuffleBlockResolver {
     }
     return getSortBasedShuffleBlockData(executor, shuffleId, mapId, reduceId);
   }
+
+
 
   /**
    * Removes our metadata of all executors registered for the given application, and optionally
@@ -302,8 +313,8 @@ public class ExternalShuffleBlockResolver {
    * Hashes a filename into the corresponding local directory, in a manner consistent with
    * Spark's DiskBlockManager.getFile().
    */
-  @VisibleForTesting
-  static File getFile(String[] localDirs, int subDirsPerLocalDir, String filename) {
+
+  public static File getFile(String[] localDirs, int subDirsPerLocalDir, String filename) {
     int hash = JavaUtils.nonNegativeHash(filename);
     String localDir = localDirs[hash % localDirs.length];
     int subDirId = (hash / localDirs.length) % subDirsPerLocalDir;

@@ -85,7 +85,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   private final int initialSortBufferSize;
   private final int inputBufferSizeInBytes;
   private final int outputBufferSizeInBytes;
-  private final ShuffleWriteSupport pluggableWriteSupport; // TODO initialize
+  private final ShuffleWriteSupport pluggableWriteSupport;
 
   @Nullable private MapStatus mapStatus;
   @Nullable private ShuffleExternalSorter sorter;

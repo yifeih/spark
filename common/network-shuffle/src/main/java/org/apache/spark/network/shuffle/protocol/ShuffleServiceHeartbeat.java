@@ -15,11 +15,10 @@
  * limitations under the License.
  */
 
-package org.apache.spark.network.shuffle.protocol.mesos;
+package org.apache.spark.network.shuffle.protocol;
 
 import io.netty.buffer.ByteBuf;
 import org.apache.spark.network.protocol.Encoders;
-import org.apache.spark.network.shuffle.protocol.BlockTransferMessage;
 
 // Needed by ScalaDoc. See SPARK-7726
 import static org.apache.spark.network.shuffle.protocol.BlockTransferMessage.Type;

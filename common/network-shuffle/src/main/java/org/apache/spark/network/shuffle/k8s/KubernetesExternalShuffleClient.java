@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.network.shuffle.mesos;
+package org.apache.spark.network.shuffle.k8s;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -24,6 +24,7 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
+import org.apache.spark.network.shuffle.protocol.RegisterExecutorWithExternal;
 import org.apache.spark.network.shuffle.protocol.ShuffleServiceHeartbeat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -36,28 +37,29 @@ import org.apache.spark.network.shuffle.protocol.RegisterDriver;
 import org.apache.spark.network.util.TransportConf;
 
 /**
- * A client for talking to the external shuffle service in Mesos coarse-grained mode.
+ * A client for talking to the external shuffle service in Kubernetes coarse-grained mode.
  *
  * This is used by the Spark driver to register with each external shuffle service on the cluster.
  * The reason why the driver has to talk to the service is for cleaning up shuffle files reliably
- * after the application exits. Mesos does not provide a great alternative to do this, so Spark
+ * after the application exits. Kubernetes does not provide a great alternative to do this, so Spark
  * has to detect this itself.
  */
-public class MesosExternalShuffleClient extends ExternalShuffleClient {
-  private static final Logger logger = LoggerFactory.getLogger(MesosExternalShuffleClient.class);
+public class KubernetesExternalShuffleClient extends ExternalShuffleClient {
+  private static final Logger logger =
+    LoggerFactory.getLogger(KubernetesExternalShuffleClient.class);
 
   private final ScheduledExecutorService heartbeaterThread =
       Executors.newSingleThreadScheduledExecutor(
         new ThreadFactoryBuilder()
           .setDaemon(true)
-          .setNameFormat("mesos-external-shuffle-client-heartbeater")
+          .setNameFormat("kubernetes-external-shuffle-client-heartbeater")
           .build());
 
   /**
-   * Creates an Mesos external shuffle client that wraps the {@link ExternalShuffleClient}.
+   * Creates a Kubernetes external shuffle client that wraps the {@link ExternalShuffleClient}.
    * Please refer to docs on {@link ExternalShuffleClient} for more information.
    */
-  public MesosExternalShuffleClient(
+  public KubernetesExternalShuffleClient(
       TransportConf conf,
       SecretKeyHolder secretKeyHolder,
       boolean authEnabled,
@@ -66,15 +68,30 @@ public class MesosExternalShuffleClient extends ExternalShuffleClient {
   }
 
   public void registerDriverWithShuffleService(
-      String host,
-      int port,
-      long heartbeatTimeoutMs,
-      long heartbeatIntervalMs) throws IOException, InterruptedException {
+          String host,
+          int port,
+          long heartbeatTimeoutMs,
+          long heartbeatIntervalMs) throws IOException, InterruptedException {
 
     checkInit();
     ByteBuffer registerDriver = new RegisterDriver(appId, heartbeatTimeoutMs).toByteBuffer();
+    logger.info("Registering with external shuffle service at " + host + ":" + port);
     TransportClient client = clientFactory.createClient(host, port);
     client.sendRpc(registerDriver, new RegisterDriverCallback(client, heartbeatIntervalMs));
+  }
+
+  public void registerExecutorWithShuffleService(
+          String host,
+          int port,
+          String appId,
+          String execId,
+          String shuffleManager) throws IOException, InterruptedException {
+    checkInit();
+    ByteBuffer registerExecutor =
+            new RegisterExecutorWithExternal(appId, execId, shuffleManager).toByteBuffer();
+    logger.info("Registering with external shuffle service for " + appId + ":" + execId);
+    TransportClient client = clientFactory.createClient(host, port);
+    client.sendRpc(registerExecutor, new RegisterExecutorCallback(appId, execId));
   }
 
   private class RegisterDriverCallback implements RpcResponseCallback {
@@ -97,6 +114,26 @@ public class MesosExternalShuffleClient extends ExternalShuffleClient {
     public void onFailure(Throwable e) {
       logger.warn("Unable to register app " + appId + " with external shuffle service. " +
           "Please manually remove shuffle data after driver exit. Error: " + e);
+    }
+  }
+
+  private class RegisterExecutorCallback implements RpcResponseCallback {
+    private String appId;
+    private String execId;
+
+    private RegisterExecutorCallback(String appId, String execId) {
+      this.appId = appId;
+      this.execId = execId;
+    }
+
+    @Override
+    public void onSuccess(ByteBuffer response) {
+      logger.info("Successfully registered " + appId + ":" + execId + " with external shuffle service.");
+    }
+
+    @Override
+    public void onFailure(Throwable e) {
+      logger.warn("Unable to register " + appId + ":" + execId + " with external shuffle service, " + e);
     }
   }
 

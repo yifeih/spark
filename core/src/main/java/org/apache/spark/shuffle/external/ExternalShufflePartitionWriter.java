@@ -1,5 +1,6 @@
 package org.apache.spark.shuffle.external;
 
+import org.apache.hadoop.hive.serde2.ByteStream;
 import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.buffer.NioManagedBuffer;
 import org.apache.spark.network.client.RpcResponseCallback;
@@ -9,8 +10,7 @@ import org.apache.spark.shuffle.api.ShufflePartitionWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.nio.ByteBuffer;
 
 public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
@@ -23,8 +23,10 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
     private final int shuffleId;
     private final int mapId;
     private final int partitionId;
+    private final String driverHostPort;
 
     private long totalLength = 0;
+    private final ByteArrayOutputStream partitionBuffer = new ByteArrayOutputStream();
 
     public ExternalShufflePartitionWriter(
             TransportClient client,
@@ -32,17 +34,24 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
             String execId,
             int shuffleId,
             int mapId,
-            int partitionId) {
+            int partitionId,
+            String driverHostPort) {
         this.client = client;
         this.appId = appId;
         this.execId = execId;
         this.shuffleId = shuffleId;
         this.mapId = mapId;
         this.partitionId = partitionId;
+        this.driverHostPort = driverHostPort;
     }
 
     @Override
-    public void appendBytesToPartition(InputStream streamReadingBytesToAppend) {
+    public OutputStream openPartitionStream() {
+        return partitionBuffer;
+    }
+
+    @Override
+    public long commitAndGetTotalLength() {
         RpcResponseCallback callback = new RpcResponseCallback() {
             @Override
             public void onSuccess(ByteBuffer response) {
@@ -56,27 +65,27 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
         };
         try {
             ByteBuffer streamHeader =
-                    new UploadShufflePartitionStream(this.appId, execId, shuffleId, mapId, partitionId).toByteBuffer();
-            int avaibleSize = streamReadingBytesToAppend.available();
-            byte[] buf = new byte[avaibleSize];
-            int size = streamReadingBytesToAppend.read(buf, 0, avaibleSize);
-            assert size == avaibleSize;
+                    new UploadShufflePartitionStream(
+                            this.appId, execId, shuffleId, mapId, partitionId, driverHostPort).toByteBuffer();
+            int size = partitionBuffer.size();
+            byte[] buf = partitionBuffer.toByteArray();
+
             ManagedBuffer managedBuffer = new NioManagedBuffer(ByteBuffer.wrap(buf));
             client.uploadStream(new NioManagedBuffer(streamHeader), managedBuffer, callback);
             totalLength += size;
         } catch (Exception e) {
             logger.error("Encountered error while attempting to upload partition to ESS", e);
+            client.close();
             throw new RuntimeException(e);
+        } finally {
+            logger.info("Successfully sent partition to ESS");
+            client.close();
         }
-    }
-
-    @Override
-    public long commitAndGetTotalLength() {
         return totalLength;
     }
 
     @Override
     public void abort(Exception failureReason) {
-        // TODO
+        logger.error("Encountered error while attempting to upload partition to ESS", failureReason);
     }
 }

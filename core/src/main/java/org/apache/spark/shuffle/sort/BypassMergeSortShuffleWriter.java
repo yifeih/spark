@@ -239,7 +239,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
 
     final long writeStartTime = System.nanoTime();
     ShuffleMapOutputWriter mapOutputWriter = pluggableWriteSupport.newMapOutputWriter(
-          appId, shuffleId, mapId);
+        appId, shuffleId, mapId);
     try {
       for (int i = 0; i < numPartitions; i++) {
         final File file = partitionWriterSegments[i].file();

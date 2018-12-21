@@ -644,7 +644,8 @@ public class UnsafeShuffleWriterSuite {
   private final class TestShuffleWriteSupport implements ShuffleWriteSupport {
 
     @Override
-    public ShuffleMapOutputWriter newMapOutputWriter(String appId, int shuffleId, int mapId) {
+    public ShuffleMapOutputWriter newMapOutputWriter(
+            String appId, int shuffleId, int mapId) {
       try {
         if (!mergedOutputFile.exists() && !mergedOutputFile.createNewFile()) {
           throw new IllegalStateException(
