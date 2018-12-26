@@ -1,6 +1,5 @@
 package org.apache.spark.shuffle.external;
 
-import org.apache.hadoop.hive.serde2.ByteStream;
 import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.buffer.NioManagedBuffer;
 import org.apache.spark.network.client.RpcResponseCallback;
@@ -15,7 +14,8 @@ import java.nio.ByteBuffer;
 
 public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
 
-    private static final Logger logger = LoggerFactory.getLogger(ExternalShufflePartitionWriter.class);
+    private static final Logger logger =
+        LoggerFactory.getLogger(ExternalShufflePartitionWriter.class);
 
     private final TransportClient client;
     private final String appId;
@@ -23,7 +23,6 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
     private final int shuffleId;
     private final int mapId;
     private final int partitionId;
-    private final String driverHostPort;
 
     private long totalLength = 0;
     private final ByteArrayOutputStream partitionBuffer = new ByteArrayOutputStream();
@@ -34,15 +33,13 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
             String execId,
             int shuffleId,
             int mapId,
-            int partitionId,
-            String driverHostPort) {
+            int partitionId) {
         this.client = client;
         this.appId = appId;
         this.execId = execId;
         this.shuffleId = shuffleId;
         this.mapId = mapId;
         this.partitionId = partitionId;
-        this.driverHostPort = driverHostPort;
     }
 
     @Override
@@ -65,8 +62,9 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
         };
         try {
             ByteBuffer streamHeader =
-                    new UploadShufflePartitionStream(
-                            this.appId, execId, shuffleId, mapId, partitionId, driverHostPort).toByteBuffer();
+                new UploadShufflePartitionStream(
+                        this.appId, execId, shuffleId, mapId,
+                        partitionId).toByteBuffer();
             int size = partitionBuffer.size();
             byte[] buf = partitionBuffer.toByteArray();
 
@@ -86,6 +84,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
 
     @Override
     public void abort(Exception failureReason) {
-        logger.error("Encountered error while attempting to upload partition to ESS", failureReason);
+        logger.error("Encountered error while attempting" +
+            "to upload partition to ESS", failureReason);
     }
 }

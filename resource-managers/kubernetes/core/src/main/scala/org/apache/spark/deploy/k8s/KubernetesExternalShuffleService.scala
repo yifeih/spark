@@ -168,7 +168,7 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
         if (now - appState.lastHeartbeat > appState.heartbeatTimeout * 1000 * 1000) {
           logInfo(s"Application $appId timed out. Removing shuffle files.")
           connectedApps.remove(appId)
-          applicationRemoved(appId, true)
+          // TODO: Write removal logic
         }
       }
     }

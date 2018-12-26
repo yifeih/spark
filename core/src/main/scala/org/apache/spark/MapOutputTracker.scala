@@ -22,6 +22,7 @@ import java.util.concurrent.{ConcurrentHashMap, LinkedBlockingQueue, ThreadPoolE
 import java.util.zip.{GZIPInputStream, GZIPOutputStream}
 
 import scala.collection.JavaConverters._
+import scala.collection.mutable
 import scala.collection.mutable.{HashMap, HashSet, ListBuffer, Map}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.Duration
@@ -33,7 +34,7 @@ import org.apache.spark.internal.Logging
 import org.apache.spark.internal.config._
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpoint, RpcEndpointRef, RpcEnv}
 import org.apache.spark.scheduler.MapStatus
-import org.apache.spark.shuffle.MetadataFetchFailedException
+import org.apache.spark.shuffle._
 import org.apache.spark.storage.{BlockId, BlockManagerId, ShuffleBlockId}
 import org.apache.spark.util._
 
@@ -213,6 +214,7 @@ private[spark] sealed trait MapOutputTrackerMessage
 private[spark] case class GetMapOutputStatuses(shuffleId: Int)
   extends MapOutputTrackerMessage
 private[spark] case object StopMapOutputTracker extends MapOutputTrackerMessage
+private[spark] case object GetRemoteShuffleServiceAddresses extends MapOutputTrackerMessage
 
 private[spark] case class GetMapOutputMessage(shuffleId: Int, context: RpcCallContext)
 
@@ -233,6 +235,9 @@ private[spark] class MapOutputTrackerMasterEndpoint(
       logInfo("MapOutputTrackerMasterEndpoint stopped!")
       context.reply(true)
       stop()
+
+    case GetRemoteShuffleServiceAddresses =>
+      context.reply(tracker.getRemoteShuffleServiceAddresses)
   }
 }
 
@@ -318,7 +323,9 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
 private[spark] class MapOutputTrackerMaster(
     conf: SparkConf,
     broadcastManager: BroadcastManager,
-    isLocal: Boolean)
+    isLocal: Boolean,
+    shuffleServiceAddressProvider: ShuffleServiceAddressProvider
+      = DefaultShuffleServiceAddressProvider)
   extends MapOutputTracker(conf) {
 
   // The size at which we use Broadcast to send the map output statuses to the executors
@@ -643,6 +650,9 @@ private[spark] class MapOutputTrackerMaster(
       return epoch
     }
   }
+
+  def getRemoteShuffleServiceAddresses: List[(String, Int)] =
+    shuffleServiceAddressProvider.getShuffleServiceAddresses()
 
   // Get blocks sizes by executor Id. Note that zero-sized blocks are excluded in the result.
   // This method is only called in local-mode.

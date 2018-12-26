@@ -184,6 +184,8 @@ private[spark] class BlockManager(
     }
   }
 
+  private var remoteShuffleServiceAddress: Option[(String, Int)] = None
+
   var blockManagerId: BlockManagerId = _
 
   // Address of the server that serves this executor's shuffle files. This is either an external
@@ -264,8 +266,18 @@ private[spark] class BlockManager(
 
     blockManagerId = if (idFromMaster != null) idFromMaster else id
 
-    // TODO: Customize so that the shuffleServiceID is pointing to K8s
-    shuffleServerId = if (externalShuffleServiceEnabled) {
+    if (!blockManagerId.isDriver && externalk8sShuffleServiceEnabled) {
+      remoteShuffleServiceAddress = Random.shuffle(mapOutputTracker
+        .trackerEndpoint
+        .askSync[List[(String, Int)]](GetRemoteShuffleServiceAddresses))
+        .headOption
+    }
+
+    shuffleServerId = if (externalk8sShuffleServiceEnabled && !blockManagerId.isDriver) {
+      val (hostName, port) = remoteShuffleServiceAddress.getOrElse(
+        throw new SparkException("No K8S External Shuffle Addresses"))
+      BlockManagerId(executorId, hostName, port)
+    } else if (externalNonK8sShuffleService) {
       logInfo(s"external shuffle service port = $externalShuffleServicePort")
       BlockManagerId(executorId, blockTransferService.hostName, externalShuffleServicePort)
     } else {

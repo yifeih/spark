@@ -27,18 +27,16 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
     private final String hostname;
     private final int port;
     private final String execId;
-    private final String driverHostPort;
 
     public ExternalShuffleWriteSupport(
             TransportConf conf, boolean authEnabled, SecretKeyHolder secretKeyHolder,
-            String hostname, int port, String execId, String driverHostPort) {
+            String hostname, int port, String execId) {
         this.conf = conf;
         this.authEnabled = authEnabled;
         this.secretKeyHolder = secretKeyHolder;
         this.hostname = hostname;
         this.port = port;
         this.execId = execId;
-        this.driverHostPort = driverHostPort;
     }
 
     @Override
@@ -55,7 +53,7 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
                 try {
                     TransportClient client = clientFactory.createClient(hostname, port);
                     return new ExternalShufflePartitionWriter(
-                            client, appId, execId, shuffleId, mapId, partitionId, driverHostPort);
+                            client, appId, execId, shuffleId, mapId, partitionId);
                 } catch (Exception e) {
                     logger.error("Encountered error while creating transport client");
                     throw new RuntimeException(e); // what is standard practice here?
@@ -69,7 +67,8 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
 
             @Override
             public void abort(Exception exception) {
-                logger.error("Encountered error while attempting to all partitions to ESS", exception);
+                logger.error("Encountered error while" +
+                    "attempting to all partitions to ESS", exception);
             }
         };
     }

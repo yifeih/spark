@@ -23,7 +23,6 @@ import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
 
-import org.apache.commons.io.IOUtils;
 import scala.Option;
 import scala.Product2;
 import scala.Tuple2;
@@ -351,7 +350,8 @@ public class UnsafeShuffleWriterSuite {
   private void testMergingSpills(
       boolean transferToEnabled,
       boolean useShuffleWriterPlugin) throws IOException {
-    final UnsafeShuffleWriter<Object, Object> writer = createWriter(transferToEnabled, useShuffleWriterPlugin);
+    final UnsafeShuffleWriter<Object, Object> writer =
+      createWriter(transferToEnabled, useShuffleWriterPlugin);
     final ArrayList<Product2<Object, Object>> dataToWrite = new ArrayList<>();
     for (int i : new int[] { 1, 2, 3, 4, 4, 2 }) {
       dataToWrite.add(new Tuple2<>(i, i));
@@ -649,7 +649,8 @@ public class UnsafeShuffleWriterSuite {
       try {
         if (!mergedOutputFile.exists() && !mergedOutputFile.createNewFile()) {
           throw new IllegalStateException(
-              String.format("Failed to create merged output file %s.", mergedOutputFile.getAbsolutePath()));
+              String.format("Failed to create merged output file %s.",
+                mergedOutputFile.getAbsolutePath()));
         }
       } catch (IOException e) {
         throw new RuntimeException(e);

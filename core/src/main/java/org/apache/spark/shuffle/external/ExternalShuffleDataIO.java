@@ -23,7 +23,6 @@ public class ExternalShuffleDataIO implements ShuffleDataIO {
     private final String hostname;
     private final int port;
     private final String execId;
-    private final String driverHostName;
 
     public ExternalShuffleDataIO(
             SparkConf sparkConf) {
@@ -32,15 +31,15 @@ public class ExternalShuffleDataIO implements ShuffleDataIO {
 
         this.securityManager = sparkEnv.securityManager();
         this.hostname = sparkEnv.blockManager().blockTransferService().hostName();
-        this.driverHostName = sparkEnv.blockManager().master().driverEndpoint().address().hostPort();
 
-        int tmpPort = Integer.parseInt(
-                Utils.getSparkOrYarnConfig(sparkConf, SHUFFLE_SERVICE_PORT_CONFIG, DEFAULT_SHUFFLE_PORT));
+        int tmpPort = Integer.parseInt(Utils.getSparkOrYarnConfig(
+            sparkConf, SHUFFLE_SERVICE_PORT_CONFIG, DEFAULT_SHUFFLE_PORT));
         if (tmpPort == 0) {
             this.port = Integer.parseInt(sparkConf.get(SHUFFLE_SERVICE_PORT_CONFIG));
         } else {
             this.port = tmpPort;
         }
+
         this.execId = SparkEnv.get().blockManager().shuffleServerId().executorId();
     }
 
@@ -52,13 +51,14 @@ public class ExternalShuffleDataIO implements ShuffleDataIO {
     @Override
     public ShuffleReadSupport readSupport() {
         return new ExternalShuffleReadSupport(
-                conf, securityManager.isAuthenticationEnabled(), securityManager, hostname, port, execId);
+                conf, securityManager.isAuthenticationEnabled(),
+                securityManager, hostname, port, execId);
     }
 
     @Override
     public ShuffleWriteSupport writeSupport() {
         return new ExternalShuffleWriteSupport(
                 conf, securityManager.isAuthenticationEnabled(),
-                securityManager, hostname, port, execId, driverHostName);
+                securityManager, hostname, port, execId);
     }
 }

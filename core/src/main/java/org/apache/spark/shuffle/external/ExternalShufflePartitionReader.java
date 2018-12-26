@@ -1,6 +1,5 @@
 package org.apache.spark.shuffle.external;
 
-import org.apache.spark.network.client.RpcResponseCallback;
 import org.apache.spark.network.client.StreamCallback;
 import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.server.OneForOneStreamManager;
@@ -20,7 +19,8 @@ import java.util.Vector;
 
 public class ExternalShufflePartitionReader implements ShufflePartitionReader {
 
-    private static final Logger logger = LoggerFactory.getLogger(ExternalShufflePartitionReader.class);
+    private static final Logger logger =
+        LoggerFactory.getLogger(ExternalShufflePartitionReader.class);
 
     private final TransportClient client;
     private final String appId;
@@ -28,7 +28,12 @@ public class ExternalShufflePartitionReader implements ShufflePartitionReader {
     private final int shuffleId;
     private final int mapId;
 
-    public ExternalShufflePartitionReader(TransportClient client, String appId, String execId, int shuffleId, int mapId) {
+    public ExternalShufflePartitionReader(
+            TransportClient client,
+            String appId,
+            String execId,
+            int shuffleId,
+            int mapId) {
         this.client = client;
         this.appId = appId;
         this.execId = execId;
@@ -38,16 +43,19 @@ public class ExternalShufflePartitionReader implements ShufflePartitionReader {
 
     @Override
     public InputStream fetchPartition(int reduceId) {
-        OpenShufflePartition openMessage = new OpenShufflePartition(appId, execId, shuffleId, mapId, reduceId);
+        OpenShufflePartition openMessage =
+            new OpenShufflePartition(appId, execId, shuffleId, mapId, reduceId);
 
-        ByteBuffer response = client.sendRpcSync(openMessage.toByteBuffer(), 60000 /* what should be the default?  */);
+        ByteBuffer response = client.sendRpcSync(openMessage.toByteBuffer(), 60000);
 
         try {
             StreamCombiningCallback callback = new StreamCombiningCallback();
-            StreamHandle streamHandle = (StreamHandle) BlockTransferMessage.Decoder.fromByteBuffer(response);
+            StreamHandle streamHandle =
+                (StreamHandle) BlockTransferMessage.Decoder.fromByteBuffer(response);
             for (int i = 0; i < streamHandle.numChunks; i++) {
-                client.stream(OneForOneStreamManager.genStreamChunkId(streamHandle.streamId, i),
-                        callback);
+                client.stream(
+                    OneForOneStreamManager.genStreamChunkId(streamHandle.streamId, i),
+                    callback);
             }
             return callback.getCombinedInputStream();
         } catch (Exception e) {
@@ -59,9 +67,9 @@ public class ExternalShufflePartitionReader implements ShufflePartitionReader {
     private class StreamCombiningCallback implements StreamCallback {
 
         public boolean failed;
-        public final Vector<InputStream> inputStreams;
+        private final Vector<InputStream> inputStreams;
 
-        public StreamCombiningCallback() {
+        private StreamCombiningCallback() {
             inputStreams = new Vector<>();
             failed = false;
         }
@@ -84,7 +92,7 @@ public class ExternalShufflePartitionReader implements ShufflePartitionReader {
             }
         }
 
-        public SequenceInputStream getCombinedInputStream() {
+        private SequenceInputStream getCombinedInputStream() {
             if (failed) {
                 throw new RuntimeException("Stream chunk gathering failed");
             }

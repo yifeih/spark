@@ -30,10 +30,11 @@ public interface ShufflePartitionWriter {
   OutputStream openPartitionStream();
 
   /**
-   * Indicate that the partition was written successfully and there are no more incoming bytes. Returns
-   * the length of the partition that is written. Note that returning the length is mainly for backwards
-   * compatibility and should be removed in a more polished variant. After this method is called, the writer
-   * will be discarded; it's expected that the implementation will close any underlying resources.
+   * Indicate that the partition was written successfully and there are no more incoming bytes.
+   * Returns the length of the partition that is written. Note that returning the length is
+   * mainly for backwards compatibility and should be removed in a more polished variant.
+   * After this method is called, the writer will be discarded; it's expected that the
+   * implementation will close any underlying resources.
    */
   long commitAndGetTotalLength();
 

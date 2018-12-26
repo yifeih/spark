@@ -128,12 +128,14 @@ public class KubernetesExternalShuffleClient extends ExternalShuffleClient {
 
     @Override
     public void onSuccess(ByteBuffer response) {
-      logger.info("Successfully registered " + appId + ":" + execId + " with external shuffle service.");
+      logger.info("Successfully registered " +
+              appId + ":" + execId + " with external shuffle service.");
     }
 
     @Override
     public void onFailure(Throwable e) {
-      logger.warn("Unable to register " + appId + ":" + execId + " with external shuffle service, " + e);
+      logger.warn("Unable to register " +
+              appId + ":" + execId + " with external shuffle service, " + e);
     }
   }
 

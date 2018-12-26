@@ -542,7 +542,8 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
                   partitionInputStream = blockManager.serializerManager().wrapForEncryption(
                       partitionInputStream);
                   if (compressionCodec != null) {
-                    partitionInputStream = compressionCodec.compressedInputStream(partitionInputStream);
+                    partitionInputStream =
+                      compressionCodec.compressedInputStream(partitionInputStream);
                   }
                   Utils.copyStream(partitionInputStream, partitionOutput, false, false);
                 } finally {
