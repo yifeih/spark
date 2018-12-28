@@ -53,6 +53,7 @@ public class OpenShufflePartition extends BlockTransferMessage {
                 .add("execId", execId)
                 .add("shuffleId", shuffleId)
                 .add("mapId", mapId)
+                .add("partitionId", partitionId)
                 .toString();
     }
 

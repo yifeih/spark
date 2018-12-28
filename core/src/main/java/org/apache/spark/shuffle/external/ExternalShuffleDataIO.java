@@ -8,7 +8,7 @@ import org.apache.spark.shuffle.api.ShuffleDataIO;
 import org.apache.spark.shuffle.api.ShuffleReadSupport;
 import org.apache.spark.shuffle.api.ShuffleWriteSupport;
 import org.apache.spark.SecurityManager;
-import org.apache.spark.util.Utils;
+import org.apache.spark.storage.BlockManager;
 
 public class ExternalShuffleDataIO implements ShuffleDataIO {
 
@@ -16,6 +16,7 @@ public class ExternalShuffleDataIO implements ShuffleDataIO {
     private static final String DEFAULT_SHUFFLE_PORT = "7337";
 
     private static final SparkEnv sparkEnv = SparkEnv.get();
+    private static final BlockManager blockManager = sparkEnv.blockManager();
 
     private final SparkConf sparkConf;
     private final TransportConf conf;
@@ -30,17 +31,10 @@ public class ExternalShuffleDataIO implements ShuffleDataIO {
         this.conf = SparkTransportConf.fromSparkConf(sparkConf, "shuffle", 2);
 
         this.securityManager = sparkEnv.securityManager();
-        this.hostname = sparkEnv.blockManager().blockTransferService().hostName();
+        this.hostname = blockManager.getRandomShuffleHost();
+        this.port = blockManager.getRandomShufflePort();
 
-        int tmpPort = Integer.parseInt(Utils.getSparkOrYarnConfig(
-            sparkConf, SHUFFLE_SERVICE_PORT_CONFIG, DEFAULT_SHUFFLE_PORT));
-        if (tmpPort == 0) {
-            this.port = Integer.parseInt(sparkConf.get(SHUFFLE_SERVICE_PORT_CONFIG));
-        } else {
-            this.port = tmpPort;
-        }
-
-        this.execId = SparkEnv.get().blockManager().shuffleServerId().executorId();
+        this.execId = blockManager.shuffleServerId().executorId();
     }
 
     @Override

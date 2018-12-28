@@ -17,12 +17,14 @@
 
 package org.apache.spark.deploy.k8s
 
+import java.io.{File, FileInputStream}
 import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
 import java.util.function.BiFunction
 
+import org.apache.commons.io.IOUtils
 import scala.collection.JavaConverters._
 
 import org.apache.spark.{SecurityManager, SparkConf}
@@ -118,6 +120,13 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
           case None =>
             logWarning(s"Received ShuffleServiceHeartbeat from an unknown app (remote " +
               s"address $address, appId '$appId').")
+          case OpenParam(appId, execId, shuffleId, mapId, partitionId) =>
+            logInfo(s"Received open param from app $appId from $execId")
+            val file = getFile(
+              appId, execId, shuffleId, mapId, "data", FileWriterStreamCallback.FileType.DATA)
+            val fileInputStream = new FileInputStream(file)
+            val bytes = IOUtils.toByteArray(fileInputStream)
+            callback.onSuccess(ByteBuffer.wrap(bytes))
         }
       case _ => super.handleMessage(message, client, callback)
     }
@@ -133,7 +142,8 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
         logInfo(s"Received upload param from app $appId from $execId")
         getFileWriterStreamCallback(
           appId, execId, shuffleId, mapId, "data", FileWriterStreamCallback.FileType.DATA)
-      case _ => super.handleStream(header, client, callback)
+      case _ =>
+        super.handleStream(header, client, callback)
     }
   }
 
@@ -144,23 +154,32 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
       mapId: Int,
       extension: String,
       fileType: FileWriterStreamCallback.FileType): StreamCallbackWithID = {
-    val execMap = registeredExecutors.get(appId)
-    if (execMap == null) {
-      throw new RuntimeException(
-        s"appId=$appId is not registered for remote shuffle")
-    }
-    val executor = execMap(execId)
-    if (executor == null) {
-      throw new RuntimeException(
-        s"App is not registered for remote shuffle (appId=$appId, execId=$execId)")
-    }
-    val file =
-      ExternalShuffleBlockResolver.getFile(executor.localDirs, executor.subDirsPerLocalDir,
-        "shuffle_" + shuffleId + "_" + mapId + "_0." + extension)
+    val file = getFile(appId, execId, shuffleId, mapId, extension, fileType)
     val streamCallback =
       new FileWriterStreamCallback(new AppExecId(appId, execId), shuffleId, mapId, file, fileType)
     streamCallback.open()
     streamCallback
+  }
+
+  private def getFile(
+      appId: String,
+      execId: String,
+      shuffleId: Int,
+      mapId: Int,
+      extension: String,
+      fileType: FileWriterStreamCallback.FileType): File = {
+    val execMap = registeredExecutors.get(appId)
+    if (execMap == null) {
+    throw new RuntimeException(
+    s"appId=$appId is not registered for remote shuffle")
+  }
+    val executor = execMap(execId)
+    if (executor == null) {
+    throw new RuntimeException(
+    s"App is not registered for remote shuffle (appId=$appId, execId=$execId)")
+  }
+    ExternalShuffleBlockResolver.getFile(executor.localDirs, executor.subDirsPerLocalDir,
+    "shuffle_" + shuffleId + "_" + mapId + "_0." + extension)
   }
 
   /** An extractor object for matching BlockTransferMessages. */
@@ -181,6 +200,11 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
   private object RegisterExecutorParam {
     def unapply(e: RegisterExecutorWithExternal): Option[(String, String, String)] =
       Some((e.appId, e.execId, e.shuffleManager))
+  }
+
+  private object OpenParam {
+    def unapply(o: OpenShufflePartition): Option[(String, String, Int, Int, Int)] =
+      Some((o.appId, o.execId, o.shuffleId, o.mapId, o.partitionId))
   }
 
   private class AppState(val heartbeatTimeout: Long, @volatile var lastHeartbeat: Long)

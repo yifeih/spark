@@ -185,6 +185,7 @@ private[spark] class BlockManager(
   }
 
   private var remoteShuffleServiceAddress: List[(String, Int)] = List()
+  private var randomShuffleServiceAddress: (String, Int) = null
 
   var blockManagerId: BlockManagerId = _
 
@@ -273,8 +274,8 @@ private[spark] class BlockManager(
     }
 
     shuffleServerId = if (externalk8sShuffleServiceEnabled) {
-      val (hostName, port) = Random.shuffle(remoteShuffleServiceAddress).head
-      BlockManagerId(executorId, hostName, port)
+      randomShuffleServiceAddress = Random.shuffle(remoteShuffleServiceAddress).head
+      BlockManagerId(executorId, randomShuffleServiceAddress._1, randomShuffleServiceAddress._2)
     } else if (externalNonK8sShuffleService) {
       logInfo(s"external shuffle service port = $externalShuffleServicePort")
       BlockManagerId(executorId, blockTransferService.hostName, externalShuffleServicePort)
@@ -365,6 +366,9 @@ private[spark] class BlockManager(
       }
     }
   }
+
+  private[spark] def getRandomShuffleHost: String = randomShuffleServiceAddress._1
+  private[spark] def getRandomShufflePort: Int = randomShuffleServiceAddress._2
 
   /**
    * Re-register with the master and report all blocks to it. This will be called by the heart beat

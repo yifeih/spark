@@ -77,11 +77,6 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
         " Shuffle will continue to spill to disk when necessary.")
   }
 
-  private val shuffleIoPlugin = conf.get(SHUFFLE_IO_PLUGIN_CLASS)
-    .map(clazz => Utils.loadExtensions(classOf[ShuffleDataIO], Seq(clazz), conf).head)
-
-  shuffleIoPlugin.foreach(_.initialize())
-
   /**
    * A mapping from shuffle ids to the number of mappers producing output for those shuffles.
    */
@@ -124,6 +119,9 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       endPartition: Int,
       context: TaskContext,
       metrics: ShuffleReadMetricsReporter): ShuffleReader[K, C] = {
+    val shuffleIoPlugin = conf.get(SHUFFLE_IO_PLUGIN_CLASS)
+      .map(clazz => Utils.loadExtensions(classOf[ShuffleDataIO], Seq(clazz), conf).head)
+    shuffleIoPlugin.foreach(_.initialize())
     new BlockStoreShuffleReader(
       handle.asInstanceOf[BaseShuffleHandle[K, _, C]],
       conf.getAppId,
@@ -143,6 +141,9 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
     numMapsForShuffle.putIfAbsent(
       handle.shuffleId, handle.asInstanceOf[BaseShuffleHandle[_, _, _]].numMaps)
     val env = SparkEnv.get
+    val shuffleIoPlugin = conf.get(SHUFFLE_IO_PLUGIN_CLASS)
+      .map(clazz => Utils.loadExtensions(classOf[ShuffleDataIO], Seq(clazz), conf).head)
+    shuffleIoPlugin.foreach(_.initialize())
     handle match {
       case unsafeShuffleHandle: SerializedShuffleHandle[K @unchecked, V @unchecked] =>
         new UnsafeShuffleWriter(
