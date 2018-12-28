@@ -291,14 +291,14 @@ private[spark] object Config extends Logging {
 
   val KUBERNETES_REMOTE_SHUFFLE_SERVICE_PODS_NAMESPACE =
     ConfigBuilder("spark.kubernetes.shuffle.service.remote.pods.namespace")
-      .doc("Namespace of the pods that are running the shuffle service instances for backing up" +
-        " shuffle data.")
+      .doc("Namespace of the pods that are running the shuffle service instances for remote" +
+        " pushing of shuffle data.")
       .stringConf
       .createOptional
 
   val KUBERNETES_REMOTE_SHUFFLE_SERVICE_PORT =
     ConfigBuilder("spark.kubernetes.shuffle.service.remote.port")
-      .doc("Port of the shuffle services that will back up the application's shuffle data.")
+      .doc("Port of the external k8s shuffle service pods")
       .intConf
       .createWithDefault(7337)
 

@@ -444,6 +444,12 @@ package object config {
       .booleanConf
       .createWithDefault(false)
 
+  private[spark] val SHUFFLE_SERVICE_PROVIDER_CLASS =
+    ConfigBuilder("spark.shuffle.provider.plugin.class")
+      .doc("Experimental. Specify a class that can handle detecting shuffle service pods.")
+      .stringConf
+      .createOptional
+
   private[spark] val SHUFFLE_IO_PLUGIN_CLASS =
     ConfigBuilder("spark.shuffle.io.plugin.class")
       .doc("Experimental. Specify a class that can handle reading and writing shuffle blocks to" +

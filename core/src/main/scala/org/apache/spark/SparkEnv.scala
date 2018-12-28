@@ -22,7 +22,6 @@ import java.net.Socket
 import java.util.{Locale, ServiceLoader}
 
 import com.google.common.collect.MapMaker
-import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.util.Properties
 
@@ -302,15 +301,20 @@ object SparkEnv extends Logging {
     val broadcastManager = new BroadcastManager(isDriver, conf, securityManager)
 
     val mapOutputTracker = if (isDriver) {
-      val loader = Utils.getContextOrSparkClassLoader
       val master = conf.get("spark.master")
-      val serviceLoaders =
-        ServiceLoader.load(classOf[ShuffleServiceAddressProviderFactory], loader)
-          .asScala.filter(_.canCreate(conf.get("spark.master")))
+      val shuffleProvider = conf.get(SHUFFLE_SERVICE_PROVIDER_CLASS)
+        .map(clazz => Utils.loadExtensions(
+          classOf[ShuffleServiceAddressProviderFactory],
+          Seq(clazz), conf)).getOrElse(Seq())
+      val serviceLoaders = shuffleProvider
+        .filter(_.canCreate(conf.get("spark.master")))
       if (serviceLoaders.size > 1) {
         throw new SparkException(
           s"Multiple external cluster managers registered for the url $master: $serviceLoaders")
       }
+      val loader = Utils.getContextOrSparkClassLoader
+      logInfo(s"Loader: $loader")
+      logInfo(s"Service loader: $serviceLoaders")
       val shuffleServiceAddressProvider = serviceLoaders.headOption
         .map(_.create(conf))
         .getOrElse(DefaultShuffleServiceAddressProvider)

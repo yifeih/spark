@@ -21,6 +21,7 @@ import java.nio.ByteBuffer
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
+import java.util.function.BiFunction
 
 import scala.collection.JavaConverters._
 
@@ -49,7 +50,9 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
 
   // Stores a map of app id to app state (timeout value and last heartbeat)
   private val connectedApps = new ConcurrentHashMap[String, AppState]()
-  private val registeredExecutors = new ConcurrentHashMap[AppExecId, ExecutorShuffleInfo]()
+  private val registeredExecutors =
+    new ConcurrentHashMap[String, Map[String, ExecutorShuffleInfo]]()
+
   private val knownManagers = Array(
     "org.apache.spark.shuffle.sort.SortShuffleManager",
     "org.apache.spark.shuffle.unsafe.UnsafeShuffleManager")
@@ -74,8 +77,19 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
         }
         val executorShuffleInfo = new ExecutorShuffleInfo(
           Array(executorDir.getAbsolutePath), 1, shuffleManager)
+        val execMap = Map(execId -> executorShuffleInfo)
+        registeredExecutors.merge(appId, execMap,
+          new BiFunction[
+            Map[String, ExecutorShuffleInfo],
+            Map[String, ExecutorShuffleInfo],
+            Map[String, ExecutorShuffleInfo]]() {
+            override def apply(
+                t: Map[String, ExecutorShuffleInfo], u: Map[String, ExecutorShuffleInfo]):
+            Map[String, ExecutorShuffleInfo] = {
+              t ++ u
+            }
+          })
         logInfo(s"Registering executor ${fullId} with ${executorShuffleInfo}")
-        registeredExecutors.put(fullId, executorShuffleInfo)
 
       case RegisterDriverParam(appId, appState) =>
         val address = client.getSocketAddress
@@ -86,7 +100,12 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
           logWarning(s"Received a registration request from app $appId, but it was already " +
             s"registered")
         }
+        val driverDir = Paths.get(shuffleDir.getAbsolutePath, appId).toFile
+        if (!driverDir.mkdir()) {
+          throw new RuntimeException(s"Failed to create dir ${driverDir.getAbsolutePath}")
+        }
         connectedApps.put(appId, appState)
+        registeredExecutors.put(appId, Map[String, ExecutorShuffleInfo]())
         callback.onSuccess(ByteBuffer.allocate(0))
 
       case Heartbeat(appId) =>
@@ -111,6 +130,7 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
     header match {
       case UploadParam(
           appId, execId, shuffleId, mapId, partitionId) =>
+        logInfo(s"Received upload param from app $appId from $execId")
         getFileWriterStreamCallback(
           appId, execId, shuffleId, mapId, "data", FileWriterStreamCallback.FileType.DATA)
       case _ => super.handleStream(header, client, callback)
@@ -124,17 +144,21 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
       mapId: Int,
       extension: String,
       fileType: FileWriterStreamCallback.FileType): StreamCallbackWithID = {
-    val fullId = new AppExecId(appId, execId)
-    val executor = registeredExecutors.get(fullId)
+    val execMap = registeredExecutors.get(appId)
+    if (execMap == null) {
+      throw new RuntimeException(
+        s"appId=$appId is not registered for remote shuffle")
+    }
+    val executor = execMap(execId)
     if (executor == null) {
       throw new RuntimeException(
-        s"Executor is not registered for remote shuffle (appId=$appId, execId=$execId)")
+        s"App is not registered for remote shuffle (appId=$appId, execId=$execId)")
     }
-    val backedUpFile =
+    val file =
       ExternalShuffleBlockResolver.getFile(executor.localDirs, executor.subDirsPerLocalDir,
         "shuffle_" + shuffleId + "_" + mapId + "_0." + extension)
     val streamCallback =
-      new FileWriterStreamCallback(fullId, shuffleId, mapId, backedUpFile, fileType)
+      new FileWriterStreamCallback(new AppExecId(appId, execId), shuffleId, mapId, file, fileType)
     streamCallback.open()
     streamCallback
   }
@@ -168,6 +192,8 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
         if (now - appState.lastHeartbeat > appState.heartbeatTimeout * 1000 * 1000) {
           logInfo(s"Application $appId timed out. Removing shuffle files.")
           connectedApps.remove(appId)
+          applicationRemoved(appId, false)
+          registeredExecutors.remove(appId)
           // TODO: Write removal logic
         }
       }

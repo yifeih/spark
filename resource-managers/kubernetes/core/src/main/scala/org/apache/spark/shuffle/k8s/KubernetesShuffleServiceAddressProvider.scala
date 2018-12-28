@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.apache.spark.deploy.k8s.shuffle
+package org.apache.spark.shuffle.k8s
 
 import java.util.concurrent.{ScheduledExecutorService, ScheduledFuture, TimeUnit}
 import java.util.concurrent.locks.ReentrantReadWriteLock
@@ -26,10 +26,10 @@ import scala.collection.JavaConverters._
 import scala.collection.mutable
 
 import org.apache.spark.internal.Logging
-import org.apache.spark.scheduler.cluster.k8s._
-import org.apache.spark.scheduler.cluster.k8s.SparkPodState
-import org.apache.spark.shuffle._
+import org.apache.spark.scheduler.cluster.k8s.{SparkPodState, _}
+import org.apache.spark.shuffle.ShuffleServiceAddressProvider
 import org.apache.spark.util.Utils
+
 
 class KubernetesShuffleServiceAddressProvider(
     kubernetesClient: KubernetesClient,

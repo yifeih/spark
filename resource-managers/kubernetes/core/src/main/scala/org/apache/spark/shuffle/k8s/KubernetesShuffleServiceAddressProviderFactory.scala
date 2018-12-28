@@ -15,16 +15,17 @@
  * limitations under the License.
  */
 
-package org.apache.spark.deploy.k8s.shuffle
+package org.apache.spark.shuffle.k8s
 
 import org.apache.spark.SparkConf
 import org.apache.spark.deploy.k8s.Config._
 import org.apache.spark.deploy.k8s.SparkKubernetesClientFactory
-import org.apache.spark.internal.{config => C}
+import org.apache.spark.internal.{config => C, Logging}
 import org.apache.spark.shuffle._
 import org.apache.spark.util.ThreadUtils
 
-class KubernetesShuffleServiceAddressProviderFactory extends ShuffleServiceAddressProviderFactory {
+class KubernetesShuffleServiceAddressProviderFactory
+  extends ShuffleServiceAddressProviderFactory with Logging {
   override def canCreate(masterUrl: String): Boolean = masterUrl.startsWith("k8s://")
 
   override def create(conf: SparkConf): ShuffleServiceAddressProvider = {
@@ -33,12 +34,13 @@ class KubernetesShuffleServiceAddressProviderFactory extends ShuffleServiceAddre
         conf, conf.get("spark.master"))
       val pollForPodsExecutor = ThreadUtils.newDaemonThreadPoolScheduledExecutor(
         "poll-shuffle-service-pods", 1)
+      logInfo("Beginning to search for K8S pods that act as an External Shuffle Service")
       val shuffleServiceLabels = conf.getAllWithPrefix(KUBERNETES_REMOTE_SHUFFLE_SERVICE_LABELS)
       val shuffleServicePodsNamespace = conf.get(KUBERNETES_REMOTE_SHUFFLE_SERVICE_PODS_NAMESPACE)
-      require(shuffleServicePodsNamespace.isDefined, "Namespace for the pods running the backup" +
+      require(shuffleServicePodsNamespace.isDefined, "Namespace for the pods running the external" +
         s" shuffle service must be defined by" +
         s" ${KUBERNETES_REMOTE_SHUFFLE_SERVICE_PODS_NAMESPACE.key}")
-      require(shuffleServiceLabels.nonEmpty, "Requires labels for the backup shuffle service pods.")
+      require(shuffleServiceLabels.nonEmpty, "Requires labels for external shuffle service pods")
 
       val port: Int = conf.get(KUBERNETES_REMOTE_SHUFFLE_SERVICE_PORT)
       new KubernetesShuffleServiceAddressProvider(

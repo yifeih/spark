@@ -184,7 +184,7 @@ private[spark] class BlockManager(
     }
   }
 
-  private var remoteShuffleServiceAddress: Option[(String, Int)] = None
+  private var remoteShuffleServiceAddress: List[(String, Int)] = List()
 
   var blockManagerId: BlockManagerId = _
 
@@ -266,16 +266,14 @@ private[spark] class BlockManager(
 
     blockManagerId = if (idFromMaster != null) idFromMaster else id
 
-    if (!blockManagerId.isDriver && externalk8sShuffleServiceEnabled) {
-      remoteShuffleServiceAddress = Random.shuffle(mapOutputTracker
+    if (externalk8sShuffleServiceEnabled) {
+      remoteShuffleServiceAddress = mapOutputTracker
         .trackerEndpoint
-        .askSync[List[(String, Int)]](GetRemoteShuffleServiceAddresses))
-        .headOption
+        .askSync[List[(String, Int)]](GetRemoteShuffleServiceAddresses)
     }
 
-    shuffleServerId = if (externalk8sShuffleServiceEnabled && !blockManagerId.isDriver) {
-      val (hostName, port) = remoteShuffleServiceAddress.getOrElse(
-        throw new SparkException("No K8S External Shuffle Addresses"))
+    shuffleServerId = if (externalk8sShuffleServiceEnabled) {
+      val (hostName, port) = Random.shuffle(remoteShuffleServiceAddress).head
       BlockManagerId(executorId, hostName, port)
     } else if (externalNonK8sShuffleService) {
       logInfo(s"external shuffle service port = $externalShuffleServicePort")
@@ -285,18 +283,22 @@ private[spark] class BlockManager(
     }
 
     if (externalk8sShuffleServiceEnabled && blockManagerId.isDriver) {
-      // Register Drivers' configuration with the k8s shuffle service
-      shuffleClient.asInstanceOf[KubernetesExternalShuffleClient]
-        .registerDriverWithShuffleService(
-          shuffleServerId.host, shuffleServerId.port,
-          conf.getTimeAsMs("spark.storage.blockManagerSlaveTimeoutMs",
-            s"${conf.getTimeAsSeconds("spark.network.timeout", "120s")}s"),
-          conf.get(config.EXECUTOR_HEARTBEAT_INTERVAL))
+      // Register Drivers' configuration with the k8s shuffle services
+      remoteShuffleServiceAddress.foreach { ssId =>
+        shuffleClient.asInstanceOf[KubernetesExternalShuffleClient]
+          .registerDriverWithShuffleService(
+            ssId._1, ssId._2,
+            conf.getTimeAsMs("spark.storage.blockManagerSlaveTimeoutMs",
+              s"${conf.getTimeAsSeconds("spark.network.timeout", "120s")}s"),
+            conf.get(config.EXECUTOR_HEARTBEAT_INTERVAL))
+      }
     } else if (externalk8sShuffleServiceEnabled && !blockManagerId.isDriver) {
-      shuffleClient.asInstanceOf[KubernetesExternalShuffleClient]
-        .registerExecutorWithShuffleService(
-          shuffleServerId.host, shuffleServerId.port, appId,
-          shuffleServerId.executorId, shuffleManager.getClass.getName)
+      remoteShuffleServiceAddress.foreach { ssId =>
+        shuffleClient.asInstanceOf[KubernetesExternalShuffleClient]
+          .registerExecutorWithShuffleService(
+            ssId._1, ssId._2, appId,
+            shuffleServerId.executorId, shuffleManager.getClass.getName)
+      }
     } else if (externalNonK8sShuffleService && !blockManagerId.isDriver) {
       // Register Executors' configuration with the local shuffle service, if one should exist.
       registerWithExternalShuffleServer()

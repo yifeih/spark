@@ -45,7 +45,7 @@ public class ExternalShuffleDataIO implements ShuffleDataIO {
 
     @Override
     public void initialize() {
-        // TODO: hmmmm? maybe register? idk
+        // TODO: move registerDriver and registerExecutor here
     }
 
     @Override
