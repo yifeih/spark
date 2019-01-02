@@ -72,12 +72,12 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
             client.uploadStream(new NioManagedBuffer(streamHeader), managedBuffer, callback);
             totalLength += size;
         } catch (Exception e) {
-            logger.error("Encountered error while attempting to upload partition to ESS", e);
             client.close();
+            logger.error("Encountered error while attempting to upload partition to ESS", e);
             throw new RuntimeException(e);
         } finally {
-            logger.info("Successfully sent partition to ESS");
             client.close();
+            logger.info("Successfully sent partition to ESS");
         }
         return totalLength;
     }

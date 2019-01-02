@@ -25,9 +25,7 @@ import org.apache.spark.network.protocol.Encoders;
 import static org.apache.spark.network.shuffle.protocol.BlockTransferMessage.Type;
 
 /**
- * Upload shuffle partition request to the External Shuffle Service.
- * This request should also include the driverHostPort for the sake of
- * setting up a driver heartbeat to monitor heartbeat
+ * Upload shuffle index request to the External Shuffle Service.
  */
 public class UploadShuffleIndexStream extends BlockTransferMessage {
     public final String appId;

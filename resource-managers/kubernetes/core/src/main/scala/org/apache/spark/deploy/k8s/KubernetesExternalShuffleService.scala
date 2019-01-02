@@ -24,8 +24,8 @@ import java.util.concurrent.{ConcurrentHashMap, ExecutionException, TimeUnit}
 import java.util.function.BiFunction
 
 import com.google.common.cache.{CacheBuilder, CacheLoader, Weigher}
-import scala.collection.JavaConverters._
 
+import scala.collection.JavaConverters._
 import org.apache.spark.{SecurityManager, SparkConf}
 import org.apache.spark.deploy.ExternalShuffleService
 import org.apache.spark.deploy.k8s.Config.KUBERNETES_REMOTE_SHUFFLE_SERVICE_CLEANUP_INTERVAL
@@ -36,7 +36,7 @@ import org.apache.spark.network.shuffle._
 import org.apache.spark.network.shuffle.ExternalShuffleBlockResolver._
 import org.apache.spark.network.shuffle.protocol._
 import org.apache.spark.network.util.{JavaUtils, TransportConf}
-import org.apache.spark.util.ThreadUtils
+import org.apache.spark.util.{ThreadUtils, Utils}
 
 /**
  * An RPC endpoint that receives registration requests from Spark drivers running on Kubernetes.
@@ -69,8 +69,7 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
   private val knownManagers = Array(
     "org.apache.spark.shuffle.sort.SortShuffleManager",
     "org.apache.spark.shuffle.unsafe.UnsafeShuffleManager")
-  private final val shuffleDir = Files.createTempDirectory("spark-shuffle-dir").toFile()
-
+  private final val shuffleDir = Utils.createDirectory("/tmp", "spark-shuffle-dir")
 
   protected override def handleMessage(
       message: BlockTransferMessage,
@@ -250,7 +249,12 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
           connectedApps.remove(appId)
           applicationRemoved(appId, false)
           registeredExecutors.remove(appId)
-          // TODO: Write removal logic
+          try {
+            val driverDir = Paths.get(shuffleDir.getAbsolutePath, appId).toFile
+            driverDir.delete()
+          } catch {
+            case e: Exception => logError("Unable to delete files", e)
+          }
         }
       }
     }

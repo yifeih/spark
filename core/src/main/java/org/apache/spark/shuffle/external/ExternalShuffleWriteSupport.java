@@ -78,8 +78,9 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
                         logger.error("Encountered an error uploading index", e);
                     }
                 };
+                final TransportClient client;
                 try {
-                    TransportClient client = clientFactory.createClient(hostname, port);
+                    client = clientFactory.createClient(hostname, port);
                     logger.info("Committing all partitions with a creation of an index file");
                     ByteBuffer streamHeader = new UploadShuffleIndexStream(
                         appId, execId, shuffleId, mapId).toByteBuffer();
@@ -94,7 +95,9 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
                     }
                     client.uploadStream(new NioManagedBuffer(streamHeader),
                             new NioManagedBuffer(byteBuffer), callback);
+                    client.close();
                 } catch (Exception e) {
+                    // Close client upon failure
                     logger.error("Encountered error while creating transport client", e);
                 }
             }

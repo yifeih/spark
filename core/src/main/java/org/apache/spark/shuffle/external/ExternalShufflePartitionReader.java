@@ -2,15 +2,13 @@ package org.apache.spark.shuffle.external;
 
 import org.apache.spark.network.client.StreamCallback;
 import org.apache.spark.network.client.TransportClient;
-import org.apache.spark.network.server.OneForOneStreamManager;
-import org.apache.spark.network.shuffle.protocol.BlockTransferMessage;
 import org.apache.spark.network.shuffle.protocol.OpenShufflePartition;
-import org.apache.spark.network.shuffle.protocol.StreamHandle;
 import org.apache.spark.shuffle.api.ShufflePartitionReader;
 import org.apache.spark.util.ByteBufferInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.SequenceInputStream;
@@ -49,15 +47,11 @@ public class ExternalShufflePartitionReader implements ShufflePartitionReader {
         ByteBuffer response = client.sendRpcSync(openMessage.toByteBuffer(), 60000);
 
         try {
-            StreamCombiningCallback callback = new StreamCombiningCallback();
-            StreamHandle streamHandle =
-                (StreamHandle) BlockTransferMessage.Decoder.fromByteBuffer(response);
-            for (int i = 0; i < streamHandle.numChunks; i++) {
-                client.stream(
-                    OneForOneStreamManager.genStreamChunkId(streamHandle.streamId, i),
-                    callback);
+            if (response.hasArray()) {
+                // use heap buffer; no array is created; only the reference is used
+                return new ByteArrayInputStream(response.array());
             }
-            return callback.getCombinedInputStream();
+            return new ByteBufferInputStream(response);
         } catch (Exception e) {
             logger.error("Encountered exception while trying to fetch blocks", e);
             throw new RuntimeException(e);
