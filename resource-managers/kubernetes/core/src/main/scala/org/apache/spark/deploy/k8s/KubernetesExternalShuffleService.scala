@@ -17,20 +17,20 @@
 
 package org.apache.spark.deploy.k8s
 
-import java.io.{File, FileInputStream}
+import java.io.File
 import java.nio.ByteBuffer
-import java.nio.file.Files
-import java.nio.file.Paths
-import java.util.concurrent.{ConcurrentHashMap, TimeUnit}
+import java.nio.file.{Files, Paths}
+import java.util.concurrent.{ConcurrentHashMap, ExecutionException, TimeUnit}
 import java.util.function.BiFunction
 
-import org.apache.commons.io.IOUtils
+import com.google.common.cache.{CacheBuilder, CacheLoader, Weigher}
 import scala.collection.JavaConverters._
 
 import org.apache.spark.{SecurityManager, SparkConf}
 import org.apache.spark.deploy.ExternalShuffleService
 import org.apache.spark.deploy.k8s.Config.KUBERNETES_REMOTE_SHUFFLE_SERVICE_CLEANUP_INTERVAL
 import org.apache.spark.internal.Logging
+import org.apache.spark.network.buffer.FileSegmentManagedBuffer
 import org.apache.spark.network.client.{RpcResponseCallback, StreamCallbackWithID, TransportClient}
 import org.apache.spark.network.shuffle._
 import org.apache.spark.network.shuffle.ExternalShuffleBlockResolver._
@@ -44,21 +44,33 @@ import org.apache.spark.util.ThreadUtils
  */
 private[spark] class KubernetesExternalShuffleBlockHandler(
     transportConf: TransportConf,
-    cleanerIntervalS: Long)
+    cleanerIntervals: Long,
+    indexCacheSize: String)
   extends ExternalShuffleBlockHandler(transportConf, null) with Logging {
 
   ThreadUtils.newDaemonSingleThreadScheduledExecutor("shuffle-cleaner-watcher")
-    .scheduleAtFixedRate(new CleanerThread(), 0, cleanerIntervalS, TimeUnit.SECONDS)
+    .scheduleAtFixedRate(new CleanerThread(), 0, cleanerIntervals, TimeUnit.SECONDS)
 
   // Stores a map of app id to app state (timeout value and last heartbeat)
   private val connectedApps = new ConcurrentHashMap[String, AppState]()
   private val registeredExecutors =
     new ConcurrentHashMap[String, Map[String, ExecutorShuffleInfo]]()
+  private val indexCacheLoader = new CacheLoader[File, ShuffleIndexInformation]() {
+    override def load(file: File): ShuffleIndexInformation = new ShuffleIndexInformation(file)
+  }
+  private val shuffleIndexCache = CacheBuilder.newBuilder()
+    .maximumWeight(JavaUtils.byteStringAsBytes(indexCacheSize))
+    .weigher(new Weigher[File, ShuffleIndexInformation]() {
+      override def weigh(file: File, indexInfo: ShuffleIndexInformation): Int =
+        indexInfo.getSize
+    })
+    .build(indexCacheLoader)
 
   private val knownManagers = Array(
     "org.apache.spark.shuffle.sort.SortShuffleManager",
     "org.apache.spark.shuffle.unsafe.UnsafeShuffleManager")
   private final val shuffleDir = Files.createTempDirectory("spark-shuffle-dir").toFile()
+
 
   protected override def handleMessage(
       message: BlockTransferMessage,
@@ -120,13 +132,23 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
           case None =>
             logWarning(s"Received ShuffleServiceHeartbeat from an unknown app (remote " +
               s"address $address, appId '$appId').")
-          case OpenParam(appId, execId, shuffleId, mapId, partitionId) =>
-            logInfo(s"Received open param from app $appId from $execId")
-            val file = getFile(
-              appId, execId, shuffleId, mapId, "data", FileWriterStreamCallback.FileType.DATA)
-            val fileInputStream = new FileInputStream(file)
-            val bytes = IOUtils.toByteArray(fileInputStream)
-            callback.onSuccess(ByteBuffer.wrap(bytes))
+        }
+      case OpenParam(appId, execId, shuffleId, mapId, partitionId) =>
+        logInfo(s"Received open param from app $appId from $execId")
+        val indexFile = getFile(
+          appId, execId, shuffleId, mapId, "index", FileWriterStreamCallback.FileType.INDEX)
+        try {
+          val shuffleIndexInformation = shuffleIndexCache.get(indexFile)
+          val shuffleIndexRecord = shuffleIndexInformation.getIndex(partitionId)
+          val managedBuffer = new FileSegmentManagedBuffer(
+            transportConf,
+            getFile(appId, execId, shuffleId, mapId,
+              "data", FileWriterStreamCallback.FileType.DATA),
+            shuffleIndexRecord.getOffset,
+            shuffleIndexRecord.getLength)
+          callback.onSuccess(managedBuffer.nioByteBuffer())
+        } catch {
+          case e: ExecutionException => logError(s"Unable to write index file $indexFile", e)
         }
       case _ => super.handleMessage(message, client, callback)
     }
@@ -139,9 +161,14 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
     header match {
       case UploadParam(
           appId, execId, shuffleId, mapId, partitionId) =>
+        // TODO: Investigate whether we should use the partitionId for Index File creation
         logInfo(s"Received upload param from app $appId from $execId")
         getFileWriterStreamCallback(
           appId, execId, shuffleId, mapId, "data", FileWriterStreamCallback.FileType.DATA)
+      case UploadIndexParam(appId, execId, shuffleId, mapId) =>
+        logInfo(s"Received upload index param from app $appId from $execId")
+        getFileWriterStreamCallback(
+          appId, execId, shuffleId, mapId, "index", FileWriterStreamCallback.FileType.INDEX)
       case _ =>
         super.handleStream(header, client, callback)
     }
@@ -197,6 +224,11 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
       Some((u.appId, u.execId, u.shuffleId, u.mapId, u.partitionId))
   }
 
+  private object UploadIndexParam {
+    def unapply(u: UploadShuffleIndexStream): Option[(String, String, Int, Int)] =
+      Some((u.appId, u.execId, u.shuffleId, u.mapId))
+  }
+
   private object RegisterExecutorParam {
     def unapply(e: RegisterExecutorWithExternal): Option[(String, String, String)] =
       Some((e.appId, e.execId, e.shuffleManager))
@@ -236,8 +268,9 @@ private[spark] class KubernetesExternalShuffleService(
 
   protected override def newShuffleBlockHandler(
       conf: TransportConf): ExternalShuffleBlockHandler = {
-    val cleanerIntervalS = this.conf.get(KUBERNETES_REMOTE_SHUFFLE_SERVICE_CLEANUP_INTERVAL)
-    new KubernetesExternalShuffleBlockHandler(conf, cleanerIntervalS)
+    val cleanerIntervals = this.conf.get(KUBERNETES_REMOTE_SHUFFLE_SERVICE_CLEANUP_INTERVAL)
+    val indexCacheSize = this.conf.get("spark.shuffle.service.index.cache.size", "100m")
+    new KubernetesExternalShuffleBlockHandler(conf, cleanerIntervals, indexCacheSize)
   }
 }
 

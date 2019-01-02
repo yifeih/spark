@@ -696,7 +696,7 @@ public class UnsafeShuffleWriterSuite {
         }
 
         @Override
-        public void commitAllPartitions() {
+        public void commitAllPartitions(long[] partitionlegnths) {
 
         }
 
