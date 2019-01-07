@@ -19,13 +19,13 @@ package org.apache.spark.deploy.k8s
 
 import java.io.File
 import java.nio.ByteBuffer
-import java.nio.file.{Files, Paths}
+import java.nio.file.Paths
 import java.util.concurrent.{ConcurrentHashMap, ExecutionException, TimeUnit}
 import java.util.function.BiFunction
 
 import com.google.common.cache.{CacheBuilder, CacheLoader, Weigher}
-
 import scala.collection.JavaConverters._
+
 import org.apache.spark.{SecurityManager, SparkConf}
 import org.apache.spark.deploy.ExternalShuffleService
 import org.apache.spark.deploy.k8s.Config.KUBERNETES_REMOTE_SHUFFLE_SERVICE_CLEANUP_INTERVAL
@@ -47,6 +47,7 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
     cleanerIntervals: Long,
     indexCacheSize: String)
   extends ExternalShuffleBlockHandler(transportConf, null) with Logging {
+
 
   ThreadUtils.newDaemonSingleThreadScheduledExecutor("shuffle-cleaner-watcher")
     .scheduleAtFixedRate(new CleanerThread(), 0, cleanerIntervals, TimeUnit.SECONDS)
@@ -205,7 +206,7 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
     s"App is not registered for remote shuffle (appId=$appId, execId=$execId)")
   }
     ExternalShuffleBlockResolver.getFile(executor.localDirs, executor.subDirsPerLocalDir,
-    "shuffle_" + shuffleId + "_" + mapId + "_0." + extension)
+      s"shuffle_${shuffleId}_${mapId}_0.$extension")
   }
 
   /** An extractor object for matching BlockTransferMessages. */
@@ -251,6 +252,7 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
           registeredExecutors.remove(appId)
           try {
             val driverDir = Paths.get(shuffleDir.getAbsolutePath, appId).toFile
+            logInfo(s"Driver dir is: ${driverDir.getAbsolutePath}")
             driverDir.delete()
           } catch {
             case e: Exception => logError("Unable to delete files", e)

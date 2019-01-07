@@ -43,9 +43,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
     }
 
     @Override
-    public OutputStream openPartitionStream() {
-        return partitionBuffer;
-    }
+    public OutputStream openPartitionStream() { return this.partitionBuffer; }
 
     @Override
     public long commitAndGetTotalLength() {
@@ -61,9 +59,10 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
             }
         };
         try {
+            logger.info("clientid: " + client.getClientId() + " " + client.isActive());
             ByteBuffer streamHeader =
                 new UploadShufflePartitionStream(
-                        this.appId, execId, shuffleId, mapId,
+                        appId, execId, shuffleId, mapId,
                         partitionId).toByteBuffer();
             int size = partitionBuffer.size();
             byte[] buf = partitionBuffer.toByteArray();
@@ -84,6 +83,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
 
     @Override
     public void abort(Exception failureReason) {
+        this.client.close();
         logger.error("Encountered error while attempting" +
             "to upload partition to ESS", failureReason);
     }

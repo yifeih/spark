@@ -55,7 +55,8 @@ public class ExternalShuffleReadSupport implements ShuffleReadSupport {
             TransportClient client = clientFactory.createClient(hostname, port);
             return new ExternalShufflePartitionReader(client, appId, execId, shuffleId, mapId);
         } catch (Exception e) {
-            logger.error("Encountered error while creating transport client");
+            clientFactory.close();
+            logger.error("Encountered creating transport client for partition reader");
             throw new RuntimeException(e); // what is standard practice here?
         }
     }
