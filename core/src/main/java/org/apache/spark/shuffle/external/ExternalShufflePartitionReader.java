@@ -63,10 +63,6 @@ public class ExternalShufflePartitionReader implements ShufflePartitionReader {
             }
             logger.error("Encountered exception while trying to fetch blocks", e);
             throw new RuntimeException(e);
-        } finally {
-            if (client != null) {
-                client.close();
-            }
         }
     }
 }

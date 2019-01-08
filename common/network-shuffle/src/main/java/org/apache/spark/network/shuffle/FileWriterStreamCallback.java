@@ -118,6 +118,8 @@ public class FileWriterStreamCallback implements StreamCallbackWithID {
 
   @Override
   public void onComplete(String streamId) throws IOException {
+    logger.info(
+            "Finished writing {}. File type: {}", file.getAbsolutePath(), fileType);
     fileOutputChannel.close();
   }
 

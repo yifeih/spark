@@ -64,7 +64,6 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
     })
     .build(indexCacheLoader)
 
-  private val knownManagers = Array("org.apache.spark.shuffle.sort.SortShuffleManager")
   private final val shuffleDir = Utils.createDirectory("/tmp", "spark-shuffle-dir")
 
   protected override def handleMessage(

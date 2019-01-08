@@ -74,10 +74,6 @@ public class ExternalShuffleIndexWriter {
         } catch (Exception e) {
             client.close();
             logger.error("Encountered error while creating transport client", e);
-        } finally {
-            if (client != null) {
-                client.close();
-            }
         }
     }
 }

@@ -53,8 +53,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
     public long commitAndGetTotalLength() {
         RpcResponseCallback callback = new RpcResponseCallback() {
             @Override
-            public void onSuccess(ByteBuffer response) {
-                logger.info("Successfully uploaded partition");
+            public void onSuccess(ByteBuffer response) { logger.info("Successfully uploaded partition");
             }
 
             @Override
@@ -66,9 +65,8 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
         try {
             ByteBuffer streamHeader = new UploadShufflePartitionStream(appId, shuffleId, mapId,
                 partitionId).toByteBuffer();
-            int size = partitionBuffer.size();
-            partitionBuffer.flush();
             byte[] buf = partitionBuffer.toByteArray();
+            int size = buf.length;
             ManagedBuffer managedBuffer = new NioManagedBuffer(ByteBuffer.wrap(buf));
             client = clientFactory.createUnmanagedClient(hostName, port);
             client.setClientId(String.format("data-%s-%d-%d-%d",
@@ -76,6 +74,8 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
             logger.info("clientid: " + client.getClientId() + " " + client.isActive());
             client.uploadStream(new NioManagedBuffer(streamHeader), managedBuffer, callback);
             totalLength += size;
+            logger.info("Partition Length: " + totalLength);
+            logger.info("Size: " + size);
         } catch (Exception e) {
             if (client != null) {
                 client.close();
@@ -83,14 +83,6 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
             logger.error("Encountered error while attempting to upload partition to ESS", e);
             throw new RuntimeException(e);
         } finally {
-            if (client != null) {
-                client.close();
-            }
-            try {
-                partitionBuffer.close();
-            } catch(Exception e) {
-                logger.error("Failed to close streams", e);
-            }
             logger.info("Successfully sent partition to ESS");
         }
         return totalLength;
