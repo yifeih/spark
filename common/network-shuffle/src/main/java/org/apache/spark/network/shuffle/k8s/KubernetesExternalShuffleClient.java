@@ -24,7 +24,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
-import org.apache.spark.network.shuffle.protocol.RegisterExecutorWithExternal;
 import org.apache.spark.network.shuffle.protocol.ShuffleServiceHeartbeat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -80,20 +79,6 @@ public class KubernetesExternalShuffleClient extends ExternalShuffleClient {
     client.sendRpc(registerDriver, new RegisterDriverCallback(client, heartbeatIntervalMs));
   }
 
-  public void registerExecutorWithShuffleService(
-          String host,
-          int port,
-          String appId,
-          String execId,
-          String shuffleManager) throws IOException, InterruptedException {
-    checkInit();
-    ByteBuffer registerExecutor =
-            new RegisterExecutorWithExternal(appId, execId, shuffleManager).toByteBuffer();
-    logger.info("Registering with external shuffle service for " + appId + ":" + execId);
-    TransportClient client = clientFactory.createClient(host, port);
-    client.sendRpc(registerExecutor, new RegisterExecutorCallback(appId, execId));
-  }
-
   private class RegisterDriverCallback implements RpcResponseCallback {
     private final TransportClient client;
     private final long heartbeatIntervalMs;
@@ -114,28 +99,6 @@ public class KubernetesExternalShuffleClient extends ExternalShuffleClient {
     public void onFailure(Throwable e) {
       logger.warn("Unable to register app " + appId + " with external shuffle service. " +
           "Please manually remove shuffle data after driver exit. Error: " + e);
-    }
-  }
-
-  private class RegisterExecutorCallback implements RpcResponseCallback {
-    private String appId;
-    private String execId;
-
-    private RegisterExecutorCallback(String appId, String execId) {
-      this.appId = appId;
-      this.execId = execId;
-    }
-
-    @Override
-    public void onSuccess(ByteBuffer response) {
-      logger.info("Successfully registered " +
-              appId + ":" + execId + " with external shuffle service.");
-    }
-
-    @Override
-    public void onFailure(Throwable e) {
-      logger.warn("Unable to register " +
-              appId + ":" + execId + " with external shuffle service, " + e);
     }
   }
 

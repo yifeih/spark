@@ -24,22 +24,20 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
     private final SecretKeyHolder secretKeyHolder;
     private final String hostname;
     private final int port;
-    private final String execId;
 
     public ExternalShuffleWriteSupport(
             TransportConf conf, boolean authEnabled, SecretKeyHolder secretKeyHolder,
-            String hostname, int port, String execId) {
+            String hostname, int port) {
         this.conf = conf;
         this.authEnabled = authEnabled;
         this.secretKeyHolder = secretKeyHolder;
         this.hostname = hostname;
         this.port = port;
-        this.execId = execId;
     }
 
     @Override
     public ShuffleMapOutputWriter newMapOutputWriter(String appId, int shuffleId, int mapId) {
-        TransportContext context = new TransportContext(conf, new NoOpRpcHandler(), true, true);
+        TransportContext context = new TransportContext(conf, new NoOpRpcHandler(), false);
         List<TransportClientBootstrap> bootstraps = Lists.newArrayList();
         if (authEnabled) {
             bootstraps.add(new AuthClientBootstrap(conf, appId, secretKeyHolder));
@@ -47,6 +45,6 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
         TransportClientFactory clientFactory = context.createClientFactory(bootstraps);
         logger.info("Clientfactory: " + clientFactory.toString());
         return new ExternalShuffleMapOutputWriter(
-            clientFactory, hostname, port, appId, execId, shuffleId, mapId);
+            clientFactory, hostname, port, appId, shuffleId, mapId);
     }
 }

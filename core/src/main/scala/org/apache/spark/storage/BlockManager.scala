@@ -296,13 +296,6 @@ private[spark] class BlockManager(
               s"${conf.getTimeAsSeconds("spark.network.timeout", "120s")}s"),
             conf.get(config.EXECUTOR_HEARTBEAT_INTERVAL))
       }
-    } else if (externalk8sShuffleServiceEnabled && !blockManagerId.isDriver) {
-      remoteShuffleServiceAddress.foreach { ssId =>
-        shuffleClient.asInstanceOf[KubernetesExternalShuffleClient]
-          .registerExecutorWithShuffleService(
-            ssId._1, ssId._2, appId,
-            shuffleServerId.executorId, shuffleManager.getClass.getName)
-      }
     } else if (externalNonK8sShuffleService && !blockManagerId.isDriver) {
       // Register Executors' configuration with the local shuffle service, if one should exist.
       registerWithExternalShuffleServer()

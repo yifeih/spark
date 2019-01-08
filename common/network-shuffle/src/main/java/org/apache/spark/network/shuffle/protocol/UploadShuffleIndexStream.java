@@ -29,17 +29,14 @@ import static org.apache.spark.network.shuffle.protocol.BlockTransferMessage.Typ
  */
 public class UploadShuffleIndexStream extends BlockTransferMessage {
     public final String appId;
-    public final String execId;
     public final int shuffleId;
     public final int mapId;
 
     public UploadShuffleIndexStream(
             String appId,
-            String execId,
             int shuffleId,
             int mapId) {
         this.appId = appId;
-        this.execId = execId;
         this.shuffleId = shuffleId;
         this.mapId = mapId;
     }
@@ -49,7 +46,6 @@ public class UploadShuffleIndexStream extends BlockTransferMessage {
         if (other != null && other instanceof UploadShufflePartitionStream) {
             UploadShufflePartitionStream o = (UploadShufflePartitionStream) other;
             return Objects.equal(appId, o.appId)
-                    && execId == o.execId
                     && shuffleId == o.shuffleId
                     && mapId == o.mapId;
         }
@@ -63,14 +59,13 @@ public class UploadShuffleIndexStream extends BlockTransferMessage {
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(appId, execId, shuffleId, mapId);
+        return Objects.hashCode(appId, shuffleId, mapId);
     }
 
     @Override
     public String toString() {
         return Objects.toStringHelper(this)
                 .add("appId", appId)
-                .add("execId", execId)
                 .add("shuffleId", shuffleId)
                 .add("mapId", mapId)
                 .toString();
@@ -78,23 +73,20 @@ public class UploadShuffleIndexStream extends BlockTransferMessage {
 
     @Override
     public int encodedLength() {
-        return Encoders.Strings.encodedLength(appId) +
-                Encoders.Strings.encodedLength(execId) + 4 + 4;
+        return Encoders.Strings.encodedLength(appId) + 4 + 4;
     }
 
     @Override
     public void encode(ByteBuf buf) {
         Encoders.Strings.encode(buf, appId);
-        Encoders.Strings.encode(buf, execId);
         buf.writeInt(shuffleId);
         buf.writeInt(mapId);
     }
 
     public static UploadShuffleIndexStream decode(ByteBuf buf) {
         String appId = Encoders.Strings.decode(buf);
-        String execId = Encoders.Strings.decode(buf);
         int shuffleId = buf.readInt();
         int mapId = buf.readInt();
-        return new UploadShuffleIndexStream(appId, execId, shuffleId, mapId);
+        return new UploadShuffleIndexStream(appId, shuffleId, mapId);
     }
 }

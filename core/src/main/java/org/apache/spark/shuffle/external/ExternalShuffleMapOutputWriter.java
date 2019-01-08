@@ -1,6 +1,5 @@
 package org.apache.spark.shuffle.external;
 
-import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.client.TransportClientFactory;
 import org.apache.spark.shuffle.api.ShuffleMapOutputWriter;
 import org.apache.spark.shuffle.api.ShufflePartitionWriter;
@@ -10,26 +9,23 @@ import org.slf4j.LoggerFactory;
 public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
 
     private final TransportClientFactory clientFactory;
-    private final String hostname;
+    private final String hostName;
     private final int port;
     private final String appId;
-    private final String execId;
     private final int shuffleId;
     private final int mapId;
 
     public ExternalShuffleMapOutputWriter(
             TransportClientFactory clientFactory,
-            String hostname,
+            String hostName,
             int port,
             String appId,
-            String execId,
             int shuffleId,
             int mapId) {
         this.clientFactory = clientFactory;
-        this.hostname = hostname;
+        this.hostName = hostName;
         this.port = port;
         this.appId = appId;
-        this.execId = execId;
         this.shuffleId = shuffleId;
         this.mapId = mapId;
     }
@@ -40,10 +36,8 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
     @Override
     public ShufflePartitionWriter newPartitionWriter(int partitionId) {
         try {
-            TransportClient client = clientFactory.createUnmanagedClient(hostname, port);
-            logger.info("clientid: " + client.getClientId() + " " + client.isActive());
-            return new ExternalShufflePartitionWriter(
-                    client, appId, execId, shuffleId, mapId, partitionId);
+            return new ExternalShufflePartitionWriter(clientFactory,
+                hostName, port, appId, shuffleId, mapId, partitionId);
         } catch (Exception e) {
             clientFactory.close();
             logger.error("Encountered error while creating transport client", e);
@@ -54,15 +48,13 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
     @Override
     public void commitAllPartitions(long[] partitionLengths) {
         try {
-            TransportClient client = clientFactory.createUnmanagedClient(hostname, port);
-            logger.info("clientid: " + client.getClientId() + " " + client.isActive());
             ExternalShuffleIndexWriter externalShuffleIndexWriter =
-                new ExternalShuffleIndexWriter(
-                    client, appId, execId, shuffleId, mapId);
+                new ExternalShuffleIndexWriter(clientFactory,
+                    hostName, port, appId, shuffleId, mapId);
             externalShuffleIndexWriter.write(partitionLengths);
         } catch (Exception e) {
             clientFactory.close();
-            logger.error("Encountered error while creating transport client", e);
+            logger.error("Encountered error writing index file", e);
             throw new RuntimeException(e); // what is standard practice here?
         }
     }

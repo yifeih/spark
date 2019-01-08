@@ -33,7 +33,7 @@ public class FileWriterStreamCallback implements StreamCallbackWithID {
     }
   }
 
-  private final ExternalShuffleBlockResolver.AppExecId fullExecId;
+  private final String appId;
   private final int shuffleId;
   private final int mapId;
   private final File file;
@@ -41,12 +41,12 @@ public class FileWriterStreamCallback implements StreamCallbackWithID {
   private WritableByteChannel fileOutputChannel = null;
 
   public FileWriterStreamCallback(
-      ExternalShuffleBlockResolver.AppExecId fullExecId,
+      String appId,
       int shuffleId,
       int mapId,
       File file,
       FileWriterStreamCallback.FileType fileType) {
-    this.fullExecId = fullExecId;
+    this.appId = appId;
     this.shuffleId = shuffleId;
     this.mapId = mapId;
     this.file = file;
@@ -55,7 +55,7 @@ public class FileWriterStreamCallback implements StreamCallbackWithID {
 
   public void open() {
     logger.info(
-        "Opening {} for backup writing. File type: {}", file.getAbsolutePath(), fileType);
+        "Opening {} for remote writing. File type: {}", file.getAbsolutePath(), fileType);
     if (fileOutputChannel != null) {
       throw new IllegalStateException(
           String.format(
@@ -101,9 +101,8 @@ public class FileWriterStreamCallback implements StreamCallbackWithID {
 
   @Override
   public String getID() {
-    return String.format("%s-%s-%d-%d-%s",
-        fullExecId.appId,
-        fullExecId.execId,
+    return String.format("%s-%d-%d-%s",
+        appId,
         shuffleId,
         mapId,
         fileType);
@@ -124,7 +123,7 @@ public class FileWriterStreamCallback implements StreamCallbackWithID {
 
   @Override
   public void onFailure(String streamId, Throwable cause) throws IOException {
-    logger.warn("Failed to back up shuffle file at {} (type: %s).",
+    logger.warn("Failed to write shuffle file at {} (type: %s).",
         file.getAbsolutePath(),
         fileType,
         cause);
@@ -132,7 +131,7 @@ public class FileWriterStreamCallback implements StreamCallbackWithID {
     // TODO delete parent dirs too
     if (!file.delete()) {
       logger.warn(
-          "Failed to delete incomplete backup shuffle file at %s (type: %s)",
+          "Failed to delete incomplete remote shuffle file at %s (type: %s)",
           file.getAbsolutePath(),
           fileType);
     }

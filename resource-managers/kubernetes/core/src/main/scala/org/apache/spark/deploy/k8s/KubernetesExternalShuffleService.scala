@@ -21,7 +21,6 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.nio.file.Paths
 import java.util.concurrent.{ConcurrentHashMap, ExecutionException, TimeUnit}
-import java.util.function.BiFunction
 
 import com.google.common.cache.{CacheBuilder, CacheLoader, Weigher}
 import scala.collection.JavaConverters._
@@ -54,8 +53,6 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
 
   // Stores a map of app id to app state (timeout value and last heartbeat)
   private val connectedApps = new ConcurrentHashMap[String, AppState]()
-  private val registeredExecutors =
-    new ConcurrentHashMap[String, Map[String, ExecutorShuffleInfo]]()
   private val indexCacheLoader = new CacheLoader[File, ShuffleIndexInformation]() {
     override def load(file: File): ShuffleIndexInformation = new ShuffleIndexInformation(file)
   }
@@ -67,9 +64,7 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
     })
     .build(indexCacheLoader)
 
-  private val knownManagers = Array(
-    "org.apache.spark.shuffle.sort.SortShuffleManager",
-    "org.apache.spark.shuffle.unsafe.UnsafeShuffleManager")
+  private val knownManagers = Array("org.apache.spark.shuffle.sort.SortShuffleManager")
   private final val shuffleDir = Utils.createDirectory("/tmp", "spark-shuffle-dir")
 
   protected override def handleMessage(
@@ -77,34 +72,6 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
       client: TransportClient,
       callback: RpcResponseCallback): Unit = {
     message match {
-      case RegisterExecutorParam(appId, execId, shuffleManager) =>
-        val fullId = new AppExecId(appId, execId)
-        if (registeredExecutors.containsKey(fullId)) {
-          throw new UnsupportedOperationException(s"Executor $fullId cannot be registered twice")
-        }
-        val executorDir = Paths.get(shuffleDir.getAbsolutePath, appId, execId).toFile
-        if (!executorDir.mkdir()) {
-          throw new RuntimeException(s"Failed to create dir ${executorDir.getAbsolutePath}")
-        }
-        if (!knownManagers.contains(shuffleManager)) {
-          throw new UnsupportedOperationException(s"Unsupported shuffle manager of exec: ${fullId}")
-        }
-        val executorShuffleInfo = new ExecutorShuffleInfo(
-          Array(executorDir.getAbsolutePath), 1, shuffleManager)
-        val execMap = Map(execId -> executorShuffleInfo)
-        registeredExecutors.merge(appId, execMap,
-          new BiFunction[
-            Map[String, ExecutorShuffleInfo],
-            Map[String, ExecutorShuffleInfo],
-            Map[String, ExecutorShuffleInfo]]() {
-            override def apply(
-                t: Map[String, ExecutorShuffleInfo], u: Map[String, ExecutorShuffleInfo]):
-            Map[String, ExecutorShuffleInfo] = {
-              t ++ u
-            }
-          })
-        logInfo(s"Registering executor ${fullId} with ${executorShuffleInfo}")
-
       case RegisterDriverParam(appId, appState) =>
         val address = client.getSocketAddress
         val timeout = appState.heartbeatTimeout
@@ -119,7 +86,6 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
           throw new RuntimeException(s"Failed to create dir ${driverDir.getAbsolutePath}")
         }
         connectedApps.put(appId, appState)
-        registeredExecutors.put(appId, Map[String, ExecutorShuffleInfo]())
         callback.onSuccess(ByteBuffer.allocate(0))
 
       case Heartbeat(appId) =>
@@ -133,17 +99,15 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
             logWarning(s"Received ShuffleServiceHeartbeat from an unknown app (remote " +
               s"address $address, appId '$appId').")
         }
-      case OpenParam(appId, execId, shuffleId, mapId, partitionId) =>
-        logInfo(s"Received open param from app $appId from $execId")
-        val indexFile = getFile(
-          appId, execId, shuffleId, mapId, "index", FileWriterStreamCallback.FileType.INDEX)
+      case OpenParam(appId, shuffleId, mapId, partitionId) =>
+        logInfo(s"Received open param from app $appId")
+        val indexFile = getFile(appId, shuffleId, mapId, "index")
         try {
           val shuffleIndexInformation = shuffleIndexCache.get(indexFile)
           val shuffleIndexRecord = shuffleIndexInformation.getIndex(partitionId)
           val managedBuffer = new FileSegmentManagedBuffer(
             transportConf,
-            getFile(appId, execId, shuffleId, mapId,
-              "data", FileWriterStreamCallback.FileType.DATA),
+            getFile(appId, shuffleId, mapId, "data"),
             shuffleIndexRecord.getOffset,
             shuffleIndexRecord.getLength)
           callback.onSuccess(managedBuffer.nioByteBuffer())
@@ -160,15 +124,15 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
     callback: RpcResponseCallback): StreamCallbackWithID = {
     header match {
       case UploadParam(
-          appId, execId, shuffleId, mapId, partitionId) =>
+          appId, shuffleId, mapId, partitionId) =>
         // TODO: Investigate whether we should use the partitionId for Index File creation
-        logInfo(s"Received upload param from app $appId from $execId")
+        logInfo(s"Received upload param from app $appId")
         getFileWriterStreamCallback(
-          appId, execId, shuffleId, mapId, "data", FileWriterStreamCallback.FileType.DATA)
-      case UploadIndexParam(appId, execId, shuffleId, mapId) =>
-        logInfo(s"Received upload index param from app $appId from $execId")
+          appId, shuffleId, mapId, "data", FileWriterStreamCallback.FileType.DATA)
+      case UploadIndexParam(appId, shuffleId, mapId) =>
+        logInfo(s"Received upload index param from app $appId")
         getFileWriterStreamCallback(
-          appId, execId, shuffleId, mapId, "index", FileWriterStreamCallback.FileType.INDEX)
+          appId, shuffleId, mapId, "index", FileWriterStreamCallback.FileType.INDEX)
       case _ =>
         super.handleStream(header, client, callback)
     }
@@ -176,37 +140,24 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
 
   private def getFileWriterStreamCallback(
       appId: String,
-      execId: String,
       shuffleId: Int,
       mapId: Int,
       extension: String,
       fileType: FileWriterStreamCallback.FileType): StreamCallbackWithID = {
-    val file = getFile(appId, execId, shuffleId, mapId, extension, fileType)
+    val file = getFile(appId, shuffleId, mapId, extension)
     val streamCallback =
-      new FileWriterStreamCallback(new AppExecId(appId, execId), shuffleId, mapId, file, fileType)
+      new FileWriterStreamCallback(appId, shuffleId, mapId, file, fileType)
     streamCallback.open()
     streamCallback
   }
 
   private def getFile(
       appId: String,
-      execId: String,
       shuffleId: Int,
       mapId: Int,
-      extension: String,
-      fileType: FileWriterStreamCallback.FileType): File = {
-    val execMap = registeredExecutors.get(appId)
-    if (execMap == null) {
-    throw new RuntimeException(
-    s"appId=$appId is not registered for remote shuffle")
-  }
-    val executor = execMap(execId)
-    if (executor == null) {
-    throw new RuntimeException(
-    s"App is not registered for remote shuffle (appId=$appId, execId=$execId)")
-  }
-    ExternalShuffleBlockResolver.getFile(executor.localDirs, executor.subDirsPerLocalDir,
-      s"shuffle_${shuffleId}_${mapId}_0.$extension")
+      extension: String): File = {
+    Paths.get(shuffleDir.getAbsolutePath, appId,
+      s"shuffle_${shuffleId}_${mapId}_0.$extension").toFile
   }
 
   /** An extractor object for matching BlockTransferMessages. */
@@ -220,23 +171,18 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
   }
 
   private object UploadParam {
-    def unapply(u: UploadShufflePartitionStream): Option[(String, String, Int, Int, Int)] =
-      Some((u.appId, u.execId, u.shuffleId, u.mapId, u.partitionId))
+    def unapply(u: UploadShufflePartitionStream): Option[(String, Int, Int, Int)] =
+      Some((u.appId, u.shuffleId, u.mapId, u.partitionId))
   }
 
   private object UploadIndexParam {
-    def unapply(u: UploadShuffleIndexStream): Option[(String, String, Int, Int)] =
-      Some((u.appId, u.execId, u.shuffleId, u.mapId))
-  }
-
-  private object RegisterExecutorParam {
-    def unapply(e: RegisterExecutorWithExternal): Option[(String, String, String)] =
-      Some((e.appId, e.execId, e.shuffleManager))
+    def unapply(u: UploadShuffleIndexStream): Option[(String, Int, Int)] =
+      Some((u.appId, u.shuffleId, u.mapId))
   }
 
   private object OpenParam {
-    def unapply(o: OpenShufflePartition): Option[(String, String, Int, Int, Int)] =
-      Some((o.appId, o.execId, o.shuffleId, o.mapId, o.partitionId))
+    def unapply(o: OpenShufflePartition): Option[(String, Int, Int, Int)] =
+      Some((o.appId, o.shuffleId, o.mapId, o.partitionId))
   }
 
   private class AppState(val heartbeatTimeout: Long, @volatile var lastHeartbeat: Long)
@@ -249,7 +195,6 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
           logInfo(s"Application $appId timed out. Removing shuffle files.")
           connectedApps.remove(appId)
           applicationRemoved(appId, false)
-          registeredExecutors.remove(appId)
           try {
             val driverDir = Paths.get(shuffleDir.getAbsolutePath, appId).toFile
             logInfo(s"Driver dir is: ${driverDir.getAbsolutePath}")
