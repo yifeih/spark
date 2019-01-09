@@ -54,7 +54,8 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
     public long commitAndGetTotalLength() {
         RpcResponseCallback callback = new RpcResponseCallback() {
             @Override
-            public void onSuccess(ByteBuffer response) { logger.info("Successfully uploaded partition");
+            public void onSuccess(ByteBuffer response) {
+                logger.info("Successfully uploaded partition");
             }
 
             @Override
