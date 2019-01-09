@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 public class ExternalShufflePartitionReader implements ShufflePartitionReader {
 
@@ -53,6 +54,7 @@ public class ExternalShufflePartitionReader implements ShufflePartitionReader {
             logger.info("response is: " + response.toString() +
                 " " + response.array() + " " + response.hasArray());
             if (response.hasArray()) {
+                logger.info("response hashcode: " + Arrays.hashCode(response.array()));
                 // use heap buffer; no array is created; only the reference is used
                 return new ByteArrayInputStream(response.array());
             }

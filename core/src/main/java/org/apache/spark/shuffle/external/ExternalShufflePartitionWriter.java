@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
 
@@ -72,6 +73,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
             client.setClientId(String.format("data-%s-%d-%d-%d",
                     appId, shuffleId, mapId, partitionId));
             logger.info("clientid: " + client.getClientId() + " " + client.isActive());
+            logger.info("THE BUFFER HASH CODE IS: " + Arrays.hashCode(buf));
             client.uploadStream(new NioManagedBuffer(streamHeader), managedBuffer, callback);
             totalLength += size;
             logger.info("Partition Length: " + totalLength);

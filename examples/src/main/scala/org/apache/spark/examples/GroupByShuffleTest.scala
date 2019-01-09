@@ -42,6 +42,15 @@ object GroupByShuffleTest {
 
     println(wordCountsWithGroup.mkString(","))
 
+    val wordPairsRDD2 = spark.sparkContext.parallelize(words, 1).map(word => (word, 1))
+
+    val wordCountsWithGroup2 = wordPairsRDD2
+      .groupByKey()
+      .map(t => (t._1, t._2.sum))
+      .collect()
+
+    println(wordCountsWithGroup2.mkString(","))
+
     spark.stop()
   }
 }
