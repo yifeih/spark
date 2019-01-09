@@ -31,8 +31,8 @@ import org.apache.spark.deploy.k8s.Config.KUBERNETES_REMOTE_SHUFFLE_SERVICE_CLEA
 import org.apache.spark.internal.Logging
 import org.apache.spark.network.buffer.FileSegmentManagedBuffer
 import org.apache.spark.network.client.{RpcResponseCallback, StreamCallbackWithID, TransportClient}
+import org.apache.spark.network.server.OneForOneStreamManager
 import org.apache.spark.network.shuffle._
-import org.apache.spark.network.shuffle.ExternalShuffleBlockResolver._
 import org.apache.spark.network.shuffle.protocol._
 import org.apache.spark.network.util.{JavaUtils, TransportConf}
 import org.apache.spark.util.{ThreadUtils, Utils}

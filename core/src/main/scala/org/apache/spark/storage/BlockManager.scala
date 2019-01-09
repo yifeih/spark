@@ -275,9 +275,8 @@ private[spark] class BlockManager(
 
     shuffleServerId = if (externalk8sShuffleServiceEnabled) {
       // TODO: Investigate better methods of load balancing
-      // note: might break if retry (as exec could write to one of the addresses
-      // it did not write to
-      randomShuffleServiceAddress = Random.shuffle(remoteShuffleServiceAddress).head
+      // note: might break if re-initialized
+      randomShuffleServiceAddress = remoteShuffleServiceAddress.head
       BlockManagerId(executorId, randomShuffleServiceAddress._1, randomShuffleServiceAddress._2)
     } else if (externalNonK8sShuffleService) {
       logInfo(s"external shuffle service port = $externalShuffleServicePort")

@@ -437,7 +437,6 @@ final class ShuffleBlockFetcherIterator(
               s"(expectedApproxSize = $size, isNetworkReqDone=$isNetworkReqDone)"
             throwFetchFailedException(blockId, address, new IOException(msg))
           }
-
           val in = try {
             buf.createInputStream()
           } catch {

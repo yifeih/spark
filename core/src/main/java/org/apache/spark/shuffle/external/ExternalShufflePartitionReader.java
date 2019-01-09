@@ -4,14 +4,19 @@ import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.client.TransportClientFactory;
 import org.apache.spark.network.shuffle.protocol.OpenShufflePartition;
 import org.apache.spark.shuffle.api.ShufflePartitionReader;
+import org.apache.spark.storage.ShuffleBlockFetcherIterator;
 import org.apache.spark.util.ByteBufferInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayInputStream;
+import java.io.DataInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+
+import static org.apache.hadoop.hive.ql.exec.MapredContext.close;
 
 public class ExternalShufflePartitionReader implements ShufflePartitionReader {
 
@@ -55,10 +60,18 @@ public class ExternalShufflePartitionReader implements ShufflePartitionReader {
                 " " + response.array() + " " + response.hasArray());
             if (response.hasArray()) {
                 logger.info("response hashcode: " + Arrays.hashCode(response.array()));
+                ByteArrayInputStream responseStream =
+                    new ByteArrayInputStream(response.array());
+                logger.info(String.format(
+                        "Stream info %d %d",
+                        responseStream.available(),
+                        responseStream.read()));
                 // use heap buffer; no array is created; only the reference is used
-                return new ByteArrayInputStream(response.array());
+                return new DataInputStream(responseStream);
             }
-            return new ByteBufferInputStream(response);
+            ByteBufferInputStream responseStream =
+                new ByteBufferInputStream(response);
+            return new DataInputStream(responseStream);
         } catch (Exception e) {
             if (client != null) {
                 client.close();
