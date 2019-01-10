@@ -53,8 +53,7 @@ public class ExternalShuffleIndexWriter {
         TransportClient client = null;
         try {
             logger.info("Committing all partitions with a creation of an index file");
-            logger.info("Partition Lengths: " + partitionLengths.length + ": "
-                    + partitionLengths[0] + "," + partitionLengths[1]);
+            logger.info("Partition Lengths: " + partitionLengths.length);
             ByteBuffer streamHeader = new UploadShuffleIndexStream(
                 appId, shuffleId, mapId).toByteBuffer();
             // Size includes first 0L offset

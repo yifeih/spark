@@ -62,7 +62,7 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
     @Override
     public void abort(Exception exception) {
         clientFactory.close();
-        logger.error("Encountered error while" +
+        logger.error("Encountered error while " +
                 "attempting to add partitions to ESS", exception);
     }
 }
