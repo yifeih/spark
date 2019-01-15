@@ -54,6 +54,6 @@ private[spark] class YarnClusterManager extends ExternalClusterManager {
   override def initialize(scheduler: TaskScheduler, backend: SchedulerBackend): Unit = {
     scheduler.asInstanceOf[TaskSchedulerImpl].initialize(backend)
   }
-  override def createShuffleServiceAddressProvider(): ShuffleServiceAddressProvider =
+  def createShuffleServiceAddressProvider(): ShuffleServiceAddressProvider =
     DefaultShuffleServiceAddressProvider
 }

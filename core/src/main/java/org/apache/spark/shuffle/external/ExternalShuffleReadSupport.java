@@ -11,10 +11,13 @@ import org.apache.spark.network.server.NoOpRpcHandler;
 import org.apache.spark.network.util.TransportConf;
 import org.apache.spark.shuffle.api.ShufflePartitionReader;
 import org.apache.spark.shuffle.api.ShuffleReadSupport;
+import org.apache.spark.storage.ShuffleLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import scala.compat.java8.OptionConverters;
 
 import java.util.List;
+import java.util.Optional;
 
 public class ExternalShuffleReadSupport implements ShuffleReadSupport {
 
@@ -51,9 +54,16 @@ public class ExternalShuffleReadSupport implements ShuffleReadSupport {
             bootstraps.add(new AuthClientBootstrap(conf, appId, secretKeyHolder));
         }
         TransportClientFactory clientFactory = context.createClientFactory(bootstraps);
+        Optional<ShuffleLocation> maybeShuffleLocation = OptionConverters.toJava(mapOutputTracker.getShuffleLocation(shuffleId, mapId));
+        assert maybeShuffleLocation.isPresent();
+        ExternalShuffleLocation externalShuffleLocation = (ExternalShuffleLocation) maybeShuffleLocation.get();
         try {
             return new ExternalShufflePartitionReader(clientFactory,
-                hostName, port, appId, shuffleId, mapId);
+                externalShuffleLocation.getShuffleHostname(),
+                    externalShuffleLocation.getShufflePort(),
+                    appId,
+                    shuffleId,
+                    mapId);
         } catch (Exception e) {
             clientFactory.close();
             logger.error("Encountered creating transport client for partition reader");

@@ -67,6 +67,14 @@ private[spark] object MapStatus {
     }
   }
 
+  def apply(loc: BlockManagerId, uncompressedSizes: Array[Long]): MapStatus = {
+    if (uncompressedSizes.length > minPartitionsToUseHighlyCompressMapStatus) {
+      HighlyCompressedMapStatus(loc, uncompressedSizes, Option.empty)
+    } else {
+      new CompressedMapStatus(loc, uncompressedSizes, Option.empty)
+    }
+  }
+
   private[this] val LOG_BASE = 1.1
 
   /**
@@ -116,6 +124,10 @@ private[spark] class CompressedMapStatus(
   def this(loc: BlockManagerId, uncompressedSizes: Array[Long],
            shuffleLoc: Option[ShuffleLocation]) {
     this(loc, uncompressedSizes.map(MapStatus.compressSize), shuffleLoc)
+  }
+
+  def this(loc: BlockManagerId, uncompressedSizes: Array[Long]) {
+    this(loc, uncompressedSizes.map(MapStatus.compressSize), Option.empty)
   }
 
   override def location: BlockManagerId = loc

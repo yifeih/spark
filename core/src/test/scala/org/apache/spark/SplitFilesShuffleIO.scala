@@ -19,9 +19,12 @@ package org.apache.spark
 
 import java.io._
 import java.nio.file.Paths
+import java.util.Optional
+
 import javax.ws.rs.core.UriBuilder
 
 import org.apache.spark.shuffle.api._
+import org.apache.spark.storage.ShuffleLocation
 import org.apache.spark.util.Utils
 
 class SplitFilesShuffleIO(conf: SparkConf) extends ShuffleDataIO {
@@ -59,6 +62,8 @@ class SplitFilesShuffleIO(conf: SparkConf) extends ShuffleDataIO {
       override def commitAllPartitions(partitionLengths: Array[Long]): Unit = {}
 
       override def abort(exception: Exception): Unit = {}
+
+      override def getShuffleLocation: Optional[ShuffleLocation] = Optional.empty()
     }
   }
 

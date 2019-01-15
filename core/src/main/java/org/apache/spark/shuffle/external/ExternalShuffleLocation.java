@@ -28,4 +28,12 @@ public class ExternalShuffleLocation implements ShuffleLocation {
         this.shuffleHostname = (String) in.readObject();
         this.shufflePort = in.readInt();
     }
+
+    public String getShuffleHostname() {
+        return this.shuffleHostname;
+    }
+
+    public int getShufflePort() {
+        return this.shufflePort;
+    }
 }

@@ -701,6 +701,11 @@ public class UnsafeShuffleWriterSuite {
         }
 
         @Override
+        public Optional<ShuffleLocation> getShuffleLocation() {
+          return Optional.empty();
+        }
+
+        @Override
         public void abort(Exception failureReason) {
 
         }
