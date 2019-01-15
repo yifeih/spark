@@ -14,20 +14,10 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+package org.apache.spark.storage
 
-package org.apache.spark.shuffle.api;
+import java.io.Externalizable
 
-import org.apache.spark.storage.ShuffleLocation;
+trait ShuffleLocation extends Externalizable {
 
-import java.util.Optional;
-
-public interface ShuffleMapOutputWriter {
-
-  ShufflePartitionWriter newPartitionWriter(int partitionId);
-
-  void commitAllPartitions(long[] partitionLengths);
-
-  Optional<ShuffleLocation> getShuffleLocation();
-
-  void abort(Exception exception);
 }

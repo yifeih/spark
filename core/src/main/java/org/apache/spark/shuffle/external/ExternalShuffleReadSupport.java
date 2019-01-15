@@ -1,6 +1,7 @@
 package org.apache.spark.shuffle.external;
 
 import com.google.common.collect.Lists;
+import org.apache.spark.MapOutputTracker;
 import org.apache.spark.network.TransportContext;
 import org.apache.spark.network.client.TransportClientBootstrap;
 import org.apache.spark.network.client.TransportClientFactory;
@@ -24,18 +25,21 @@ public class ExternalShuffleReadSupport implements ShuffleReadSupport {
     private final SecretKeyHolder secretKeyHolder;
     private final String hostName;
     private final int port;
+    private final MapOutputTracker mapOutputTracker;
 
     public ExternalShuffleReadSupport(
             TransportConf conf,
             boolean authEnabled,
             SecretKeyHolder secretKeyHolder,
             String hostName,
-            int port) {
+            int port,
+            MapOutputTracker mapOutputTracker) {
         this.conf = conf;
         this.authEnabled = authEnabled;
         this.secretKeyHolder = secretKeyHolder;
         this.hostName = hostName;
         this.port = port;
+        this.mapOutputTracker = mapOutputTracker;
     }
 
     @Override

@@ -50,6 +50,7 @@ import org.apache.spark.shuffle.api.ShufflePartitionWriter;
 import org.apache.spark.shuffle.api.ShuffleWriteSupport;
 import org.apache.spark.storage.*;
 import org.apache.spark.util.Utils;
+import scala.compat.java8.OptionConverters;
 
 /**
  * This class implements sort-based shuffle's hash-style shuffle fallback path. This write path
@@ -95,6 +96,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   private FileSegment[] partitionWriterSegments;
   @Nullable private MapStatus mapStatus;
   private long[] partitionLengths;
+  private Option<ShuffleLocation> shuffleLocation = Option.empty();
 
   /**
    * Are we in the process of stopping? Because map tasks can call stop() with success = true
@@ -133,7 +135,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     if (!records.hasNext()) {
       partitionLengths = new long[numPartitions];
       shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, null);
-      mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths);
+      mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths, shuffleLocation);
       return;
     }
     final SerializerInstance serInstance = serializer.newInstance();
@@ -179,7 +181,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         }
       }
     }
-    mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths);
+    mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths, shuffleLocation);
   }
 
   @VisibleForTesting
@@ -268,6 +270,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         }
       }
       mapOutputWriter.commitAllPartitions(lengths);
+      shuffleLocation = OptionConverters.toScala(mapOutputWriter.getShuffleLocation());
     } catch (Exception e) {
       try {
         mapOutputWriter.abort(e);

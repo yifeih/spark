@@ -49,6 +49,8 @@ private[spark] class SortShuffleWriter[K, V, C](
 
   private val writeMetrics = context.taskMetrics().shuffleWriteMetrics
 
+  private val shuffleLocation = Option.empty
+
   /** Write a bunch of records to this task's output */
   override def write(records: Iterator[Product2[K, V]]): Unit = {
     sorter = if (dep.mapSideCombine) {
@@ -76,7 +78,7 @@ private[spark] class SortShuffleWriter[K, V, C](
       if (pluggableWriteSupport.isEmpty) {
         shuffleBlockResolver.writeIndexFileAndCommit(dep.shuffleId, mapId, partitionLengths, tmp)
       }
-      mapStatus = MapStatus(blockManager.shuffleServerId, partitionLengths)
+      mapStatus = MapStatus(blockManager.shuffleServerId, partitionLengths, shuffleLocation)
     } finally {
       if (tmp.exists() && !tmp.delete()) {
         logError(s"Error while deleting temp file ${tmp.getAbsolutePath}")

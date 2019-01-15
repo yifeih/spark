@@ -3,8 +3,11 @@ package org.apache.spark.shuffle.external;
 import org.apache.spark.network.client.TransportClientFactory;
 import org.apache.spark.shuffle.api.ShuffleMapOutputWriter;
 import org.apache.spark.shuffle.api.ShufflePartitionWriter;
+import org.apache.spark.storage.ShuffleLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.util.Optional;
 
 public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
 
@@ -57,6 +60,11 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
             logger.error("Encountered error writing index file", e);
             throw new RuntimeException(e); // what is standard practice here?
         }
+    }
+
+    @Override
+    public Optional<ShuffleLocation> getShuffleLocation() {
+        return Optional.of(new ExternalShuffleLocation(hostName, port));
     }
 
     @Override

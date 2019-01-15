@@ -1,5 +1,6 @@
 package org.apache.spark.shuffle.external;
 
+import org.apache.spark.MapOutputTracker;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkEnv;
 import org.apache.spark.network.netty.SparkTransportConf;
@@ -18,20 +19,20 @@ public class ExternalShuffleDataIO implements ShuffleDataIO {
     private static final SparkEnv sparkEnv = SparkEnv.get();
     private static final BlockManager blockManager = sparkEnv.blockManager();
 
-    private final SparkConf sparkConf;
     private final TransportConf conf;
     private final SecurityManager securityManager;
     private final String hostname;
     private final int port;
+    private final MapOutputTracker mapOutputTracker;
 
     public ExternalShuffleDataIO(
             SparkConf sparkConf) {
-        this.sparkConf = sparkConf;
         this.conf = SparkTransportConf.fromSparkConf(sparkConf, "shuffle", 1);
 
         this.securityManager = sparkEnv.securityManager();
         this.hostname = blockManager.getRandomShuffleHost();
         this.port = blockManager.getRandomShufflePort();
+        this.mapOutputTracker = sparkEnv.mapOutputTracker();
     }
 
     @Override
@@ -43,7 +44,7 @@ public class ExternalShuffleDataIO implements ShuffleDataIO {
     public ShuffleReadSupport readSupport() {
         return new ExternalShuffleReadSupport(
                 conf, securityManager.isAuthenticationEnabled(),
-                securityManager, hostname, port);
+                securityManager, hostname, port, mapOutputTracker);
     }
 
     @Override

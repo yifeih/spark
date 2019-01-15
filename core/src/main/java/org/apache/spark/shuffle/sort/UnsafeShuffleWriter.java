@@ -22,9 +22,11 @@ import java.io.*;
 import java.nio.channels.FileChannel;
 import java.util.Iterator;
 
+import org.apache.spark.storage.ShuffleLocation;
 import scala.Option;
 import scala.Product2;
 import scala.collection.JavaConverters;
+import scala.compat.java8.OptionConverters;
 import scala.reflect.ClassTag;
 import scala.reflect.ClassTag$;
 
@@ -89,6 +91,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
 
   @Nullable private MapStatus mapStatus;
   @Nullable private ShuffleExternalSorter sorter;
+  private Option<ShuffleLocation> shuffleLocation = Option.empty();
   private long peakMemoryUsedBytes = 0;
 
   /** Subclass of ByteArrayOutputStream that exposes `buf` directly. */
@@ -257,7 +260,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         logger.error("Error while deleting temp file {}", tmp.getAbsolutePath());
       }
     }
-    mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths);
+    mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths, shuffleLocation);
   }
 
   @VisibleForTesting
@@ -564,6 +567,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         }
       }
       mapOutputWriter.commitAllPartitions(partitionLengths);
+      shuffleLocation = OptionConverters.toScala(mapOutputWriter.getShuffleLocation());
       threwException = false;
     } catch (Exception e) {
       try {
