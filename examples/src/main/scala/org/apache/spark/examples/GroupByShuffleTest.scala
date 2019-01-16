@@ -18,12 +18,10 @@
 // scalastyle:off println
 package org.apache.spark.examples
 
-import java.util.Random
-
 import org.apache.spark.sql.SparkSession
 
 /**
- * Usage: GroupByShuffleTest [numMappers] [numKVPairs] [KeySize] [numReducers]
+ * Usage: GroupByShuffleTest
  */
 object GroupByShuffleTest {
   def main(args: Array[String]) {

@@ -6,7 +6,6 @@ import org.apache.spark.network.client.TransportClientBootstrap;
 import org.apache.spark.network.client.TransportClientFactory;
 import org.apache.spark.network.crypto.AuthClientBootstrap;
 import org.apache.spark.network.sasl.SecretKeyHolder;
-import org.apache.spark.network.server.NoOpRpcHandler;
 import org.apache.spark.network.util.TransportConf;
 import org.apache.spark.shuffle.api.ShuffleMapOutputWriter;
 import org.apache.spark.shuffle.api.ShuffleWriteSupport;
@@ -17,34 +16,39 @@ import java.util.List;
 
 public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
 
-    private static final Logger logger = LoggerFactory.getLogger(ExternalShuffleWriteSupport.class);
+  private static final Logger logger = LoggerFactory.getLogger(ExternalShuffleWriteSupport.class);
 
-    private final TransportConf conf;
-    private final boolean authEnabled;
-    private final SecretKeyHolder secretKeyHolder;
-    private final String hostname;
-    private final int port;
+  private final TransportConf conf;
+  private final TransportContext context;
+  private final boolean authEnabled;
+  private final SecretKeyHolder secretKeyHolder;
+  private final String hostname;
+  private final int port;
 
-    public ExternalShuffleWriteSupport(
-            TransportConf conf, boolean authEnabled, SecretKeyHolder secretKeyHolder,
-            String hostname, int port) {
-        this.conf = conf;
-        this.authEnabled = authEnabled;
-        this.secretKeyHolder = secretKeyHolder;
-        this.hostname = hostname;
-        this.port = port;
+  public ExternalShuffleWriteSupport(
+    TransportConf conf,
+    TransportContext context,
+    boolean authEnabled,
+    SecretKeyHolder secretKeyHolder,
+    String hostname,
+    int port) {
+  this.conf = conf;
+  this.context = context;
+  this.authEnabled = authEnabled;
+  this.secretKeyHolder = secretKeyHolder;
+  this.hostname = hostname;
+  this.port = port;
+}
+
+  @Override
+  public ShuffleMapOutputWriter newMapOutputWriter(String appId, int shuffleId, int mapId) {
+    List<TransportClientBootstrap> bootstraps = Lists.newArrayList();
+    if (authEnabled) {
+      bootstraps.add(new AuthClientBootstrap(conf, appId, secretKeyHolder));
     }
-
-    @Override
-    public ShuffleMapOutputWriter newMapOutputWriter(String appId, int shuffleId, int mapId) {
-        TransportContext context = new TransportContext(conf, new NoOpRpcHandler(), false);
-        List<TransportClientBootstrap> bootstraps = Lists.newArrayList();
-        if (authEnabled) {
-            bootstraps.add(new AuthClientBootstrap(conf, appId, secretKeyHolder));
-        }
-        TransportClientFactory clientFactory = context.createClientFactory(bootstraps);
-        logger.info("Clientfactory: " + clientFactory.toString());
-        return new ExternalShuffleMapOutputWriter(
-            clientFactory, hostname, port, appId, shuffleId, mapId);
-    }
+    TransportClientFactory clientFactory = context.createClientFactory(bootstraps);
+    logger.info("Clientfactory: " + clientFactory.toString());
+    return new ExternalShuffleMapOutputWriter(
+      clientFactory, hostname, port, appId, shuffleId, mapId);
+  }
 }

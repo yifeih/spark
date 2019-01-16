@@ -25,14 +25,14 @@ import org.apache.spark.network.protocol.Encoders;
 import static org.apache.spark.network.shuffle.protocol.BlockTransferMessage.Type;
 
 /**
- * Upload shuffle index request to the External Shuffle Service.
+ * Register shuffle index to the External Shuffle Service.
  */
-public class UploadShuffleIndexStream extends BlockTransferMessage {
+public class RegisterShuffleIndex extends BlockTransferMessage {
     public final String appId;
     public final int shuffleId;
     public final int mapId;
 
-    public UploadShuffleIndexStream(
+    public RegisterShuffleIndex(
             String appId,
             int shuffleId,
             int mapId) {
@@ -54,7 +54,7 @@ public class UploadShuffleIndexStream extends BlockTransferMessage {
 
     @Override
     protected Type type() {
-        return Type.UPLOAD_SHUFFLE_INDEX_STREAM;
+        return Type.REGISTER_SHUFFLE_INDEX;
     }
 
     @Override
@@ -83,10 +83,10 @@ public class UploadShuffleIndexStream extends BlockTransferMessage {
         buf.writeInt(mapId);
     }
 
-    public static UploadShuffleIndexStream decode(ByteBuf buf) {
+    public static RegisterShuffleIndex decode(ByteBuf buf) {
         String appId = Encoders.Strings.decode(buf);
         int shuffleId = buf.readInt();
         int mapId = buf.readInt();
-        return new UploadShuffleIndexStream(appId, shuffleId, mapId);
+        return new RegisterShuffleIndex(appId, shuffleId, mapId);
     }
 }

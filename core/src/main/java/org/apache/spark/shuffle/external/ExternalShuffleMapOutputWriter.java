@@ -1,13 +1,18 @@
 package org.apache.spark.shuffle.external;
 
+import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.client.TransportClientFactory;
+import org.apache.spark.network.shuffle.protocol.RegisterShuffleIndex;
+import org.apache.spark.network.shuffle.protocol.UploadShuffleIndex;
 import org.apache.spark.shuffle.api.ShuffleMapOutputWriter;
 import org.apache.spark.shuffle.api.ShufflePartitionWriter;
 import org.apache.spark.storage.ShuffleLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.ByteBuffer;
 import java.util.Optional;
+
 
 public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
 
@@ -31,6 +36,22 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
         this.appId = appId;
         this.shuffleId = shuffleId;
         this.mapId = mapId;
+
+        TransportClient client = null;
+        try {
+            client = clientFactory.createUnmanagedClient(hostName, port);
+            ByteBuffer registerShuffleIndex = new RegisterShuffleIndex(
+                    appId, shuffleId, mapId).toByteBuffer();
+            String requestID = String.format(
+                    "index-register-%s-%d-%d", appId, shuffleId, mapId);
+            client.setClientId(requestID);
+            logger.info("clientid: " + client.getClientId() + " " + client.isActive());
+            client.sendRpcSync(registerShuffleIndex, 60000);
+        } catch (Exception e) {
+            client.close();
+            logger.error("Encountered error while creating transport client", e);
+            throw new RuntimeException(e);
+        }
     }
 
     private static final Logger logger =
@@ -49,16 +70,21 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
     }
 
     @Override
-    public void commitAllPartitions(long[] partitionLengths) {
+    public void commitAllPartitions() {
+        TransportClient client = null;
         try {
-            ExternalShuffleIndexWriter externalShuffleIndexWriter =
-                new ExternalShuffleIndexWriter(clientFactory,
-                    hostName, port, appId, shuffleId, mapId);
-            externalShuffleIndexWriter.write(partitionLengths);
+            client = clientFactory.createUnmanagedClient(hostName, port);
+            ByteBuffer uploadShuffleIndex = new UploadShuffleIndex(
+                    appId, shuffleId, mapId).toByteBuffer();
+            String requestID = String.format(
+                    "index-upload-%s-%d-%d", appId, shuffleId, mapId);
+            client.setClientId(requestID);
+            logger.info("clientid: " + client.getClientId() + " " + client.isActive());
+            client.sendRpcSync(uploadShuffleIndex, 60000);
         } catch (Exception e) {
-            clientFactory.close();
-            logger.error("Encountered error writing index file", e);
-            throw new RuntimeException(e); // what is standard practice here?
+            client.close();
+            logger.error("Encountered error while creating transport client", e);
+            throw new RuntimeException(e);
         }
     }
 

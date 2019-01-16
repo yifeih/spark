@@ -17,13 +17,17 @@
 
 package org.apache.spark.deploy.k8s
 
-import java.io.File
+import java.io.{DataOutputStream, File, FileOutputStream}
 import java.nio.ByteBuffer
 import java.nio.file.Paths
+import java.util
 import java.util.concurrent.{ConcurrentHashMap, ExecutionException, TimeUnit}
+import java.util.function.BiFunction
 
+import com.codahale.metrics._
 import com.google.common.cache.{CacheBuilder, CacheLoader, Weigher}
 import scala.collection.JavaConverters._
+import scala.collection.immutable.TreeMap
 
 import org.apache.spark.{SecurityManager, SparkConf}
 import org.apache.spark.deploy.ExternalShuffleService
@@ -46,7 +50,6 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
     indexCacheSize: String)
   extends ExternalShuffleBlockHandler(transportConf, null) with Logging {
 
-
   ThreadUtils.newDaemonSingleThreadScheduledExecutor("shuffle-cleaner-watcher")
     .scheduleAtFixedRate(new CleanerThread(), 0, cleanerIntervals, TimeUnit.SECONDS)
 
@@ -63,7 +66,15 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
     })
     .build(indexCacheLoader)
 
+  // TODO: Investigate cleanup if appId is terminated
+  private val globalPartitionLengths = new ConcurrentHashMap[(String, Int, Int), TreeMap[Int, Long]]
+
   private final val shuffleDir = Utils.createDirectory("/tmp", "spark-shuffle-dir")
+
+  private final val metricSet: RemoteShuffleMetrics = new RemoteShuffleMetrics()
+
+  private def scanLeft[a, b](xs: Iterable[a])(s: b)(f: (b, a) => b) =
+    xs.foldLeft(List(s))( (acc, x) => f(acc.head, x) :: acc).reverse
 
   protected override def handleMessage(
       message: BlockTransferMessage,
@@ -71,6 +82,7 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
       callback: RpcResponseCallback): Unit = {
     message match {
       case RegisterDriverParam(appId, appState) =>
+        val responseDelayContext = metricSet.registerDriverRequestLatencyMillis.time()
         val address = client.getSocketAddress
         val timeout = appState.heartbeatTimeout
         logInfo(s"Received registration request from app $appId (remote address $address, " +
@@ -84,6 +96,7 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
           throw new RuntimeException(s"Failed to create dir ${driverDir.getAbsolutePath}")
         }
         connectedApps.put(appId, appState)
+        responseDelayContext.stop()
         callback.onSuccess(ByteBuffer.allocate(0))
 
       case Heartbeat(appId) =>
@@ -97,9 +110,34 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
             logWarning(s"Received ShuffleServiceHeartbeat from an unknown app (remote " +
               s"address $address, appId '$appId').")
         }
+
+      case RegisterIndexParam(appId, shuffleId, mapId) =>
+        logInfo(s"Received register index param from app $appId")
+        globalPartitionLengths.putIfAbsent(
+          (appId, shuffleId, mapId), TreeMap.empty[Int, Long])
+        callback.onSuccess(ByteBuffer.allocate(0))
+
+      case UploadIndexParam(appId, shuffleId, mapId) =>
+        val responseDelayContext = metricSet.writeIndexRequestLatencyMillis.time()
+        try {
+          logInfo(s"Received upload index param from app $appId")
+          val partitionMap = globalPartitionLengths.get((appId, shuffleId, mapId))
+          val out = new DataOutputStream(
+            new FileOutputStream(getFile(appId, shuffleId, mapId, "index")))
+          scanLeft(partitionMap.values)(0L)(_ + _).foreach(l => out.writeLong(l))
+          out.close()
+          callback.onSuccess(ByteBuffer.allocate(0))
+        } finally {
+          responseDelayContext.stop()
+        }
+
       case OpenParam(appId, shuffleId, mapId, partitionId) =>
         logInfo(s"Received open param from app $appId")
+        val responseDelayContext = metricSet.openBlockRequestLatencyMillis.time()
         val indexFile = getFile(appId, shuffleId, mapId, "index")
+        logInfo(s"Map: " +
+          s"${globalPartitionLengths.get((appId, shuffleId, mapId)).toString()}" +
+          s"for partitionId: $partitionId")
         try {
           val shuffleIndexInformation = shuffleIndexCache.get(indexFile)
           val shuffleIndexRecord = shuffleIndexInformation.getIndex(partitionId)
@@ -111,6 +149,8 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
           callback.onSuccess(managedBuffer.nioByteBuffer())
         } catch {
           case e: ExecutionException => logError(s"Unable to write index file $indexFile", e)
+        } finally {
+          responseDelayContext.stop()
         }
       case _ => super.handleMessage(message, client, callback)
     }
@@ -122,19 +162,29 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
     callback: RpcResponseCallback): StreamCallbackWithID = {
     header match {
       case UploadParam(
-          appId, shuffleId, mapId, partitionId) =>
-        // TODO: Investigate whether we should use the partitionId for Index File creation
-        logInfo(s"Received upload param from app $appId")
-        getFileWriterStreamCallback(
-          appId, shuffleId, mapId, "data", FileWriterStreamCallback.FileType.DATA)
-      case UploadIndexParam(appId, shuffleId, mapId) =>
-        logInfo(s"Received upload index param from app $appId")
-        getFileWriterStreamCallback(
-          appId, shuffleId, mapId, "index", FileWriterStreamCallback.FileType.INDEX)
+          appId, shuffleId, mapId, partitionId, partitionLength) =>
+        val responseDelayContext = metricSet.writeBlockRequestLatencyMillis.time()
+        try {
+          logInfo(s"Received upload param from app $appId")
+          val lengthMap = TreeMap(partitionId -> partitionLength.toLong)
+          globalPartitionLengths.merge((appId, shuffleId, mapId), lengthMap,
+            new BiFunction[TreeMap[Int, Long], TreeMap[Int, Long], TreeMap[Int, Long]]() {
+              override def apply(t: TreeMap[Int, Long], u: TreeMap[Int, Long]):
+                  TreeMap[Int, Long] = {
+                t ++ u
+              }
+            })
+          getFileWriterStreamCallback(
+            appId, shuffleId, mapId, "data", FileWriterStreamCallback.FileType.DATA)
+        } finally {
+          responseDelayContext.stop()
+        }
       case _ =>
         super.handleStream(header, client, callback)
     }
   }
+
+  protected override def getAllMetrics: MetricSet = metricSet
 
   private def getFileWriterStreamCallback(
       appId: String,
@@ -169,12 +219,17 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
   }
 
   private object UploadParam {
-    def unapply(u: UploadShufflePartitionStream): Option[(String, Int, Int, Int)] =
-      Some((u.appId, u.shuffleId, u.mapId, u.partitionId))
+    def unapply(u: UploadShufflePartitionStream): Option[(String, Int, Int, Int, Int)] =
+      Some((u.appId, u.shuffleId, u.mapId, u.partitionId, u.partitionLength))
   }
 
   private object UploadIndexParam {
-    def unapply(u: UploadShuffleIndexStream): Option[(String, Int, Int)] =
+    def unapply(u: UploadShuffleIndex): Option[(String, Int, Int)] =
+      Some((u.appId, u.shuffleId, u.mapId))
+  }
+
+  private object RegisterIndexParam {
+    def unapply(u: RegisterShuffleIndex): Option[(String, Int, Int)] =
       Some((u.appId, u.shuffleId, u.mapId))
   }
 
@@ -204,6 +259,32 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
       }
     }
   }
+  private class RemoteShuffleMetrics extends MetricSet {
+    private val allMetrics = new util.HashMap[String, Metric]()
+    // Time latency for write request in ms
+    private val _writeBlockRequestLatencyMillis = new Timer()
+    def writeBlockRequestLatencyMillis: Timer = _writeBlockRequestLatencyMillis
+    // Time latency for write index file in ms
+    private val _writeIndexRequestLatencyMillis = new Timer()
+    def writeIndexRequestLatencyMillis: Timer = _writeIndexRequestLatencyMillis
+    // Time latency for read request in ms
+    private val _openBlockRequestLatencyMillis = new Timer()
+    def openBlockRequestLatencyMillis: Timer = _openBlockRequestLatencyMillis
+    // Time latency for executor registration latency in ms
+    private val _registerDriverRequestLatencyMillis = new Timer()
+    def registerDriverRequestLatencyMillis: Timer = _registerDriverRequestLatencyMillis
+    // Block transfer rate in byte per second
+    private val _blockTransferRateBytes = new Meter()
+    def blockTransferRateBytes: Meter = _blockTransferRateBytes
+
+    allMetrics.put("writeBlockRequestLatencyMillis", _writeBlockRequestLatencyMillis)
+    allMetrics.put("writeIndexRequestLatencyMillis", _writeIndexRequestLatencyMillis)
+    allMetrics.put("openBlockRequestLatencyMillis", _openBlockRequestLatencyMillis)
+    allMetrics.put("registerDriverRequestLatencyMillis", _registerDriverRequestLatencyMillis)
+    allMetrics.put("blockTransferRateBytes", _blockTransferRateBytes)
+    override def getMetrics: util.Map[String, Metric] = allMetrics
+  }
+
 }
 
 /**

@@ -7,7 +7,6 @@ import org.apache.spark.network.client.TransportClientBootstrap;
 import org.apache.spark.network.client.TransportClientFactory;
 import org.apache.spark.network.crypto.AuthClientBootstrap;
 import org.apache.spark.network.sasl.SecretKeyHolder;
-import org.apache.spark.network.server.NoOpRpcHandler;
 import org.apache.spark.network.util.TransportConf;
 import org.apache.spark.shuffle.api.ShufflePartitionReader;
 import org.apache.spark.shuffle.api.ShuffleReadSupport;
@@ -24,16 +23,19 @@ public class ExternalShuffleReadSupport implements ShuffleReadSupport {
     private static final Logger logger = LoggerFactory.getLogger(ExternalShuffleReadSupport.class);
 
     private final TransportConf conf;
+    private final TransportContext context;
     private final boolean authEnabled;
     private final SecretKeyHolder secretKeyHolder;
     private final MapOutputTracker mapOutputTracker;
 
     public ExternalShuffleReadSupport(
             TransportConf conf,
+            TransportContext context,
             boolean authEnabled,
             SecretKeyHolder secretKeyHolder,
             MapOutputTracker mapOutputTracker) {
         this.conf = conf;
+        this.context = context;
         this.authEnabled = authEnabled;
         this.secretKeyHolder = secretKeyHolder;
         this.mapOutputTracker = mapOutputTracker;
@@ -42,7 +44,6 @@ public class ExternalShuffleReadSupport implements ShuffleReadSupport {
     @Override
     public ShufflePartitionReader newPartitionReader(String appId, int shuffleId, int mapId) {
         // TODO combine this into a function with ExternalShuffleWriteSupport
-        TransportContext context = new TransportContext(conf, new NoOpRpcHandler(), false);
         List<TransportClientBootstrap> bootstraps = Lists.newArrayList();
         if (authEnabled) {
             bootstraps.add(new AuthClientBootstrap(conf, appId, secretKeyHolder));

@@ -41,7 +41,7 @@ public abstract class BlockTransferMessage implements Encodable {
   public enum Type {
     OPEN_BLOCKS(0), UPLOAD_BLOCK(1), REGISTER_EXECUTOR(2), STREAM_HANDLE(3), REGISTER_DRIVER(4),
     HEARTBEAT(5), UPLOAD_BLOCK_STREAM(6), UPLOAD_SHUFFLE_PARTITION_STREAM(7),
-    UPLOAD_SHUFFLE_INDEX_STREAM(8), OPEN_SHUFFLE_PARTITION(9);
+    REGISTER_SHUFFLE_INDEX(8), OPEN_SHUFFLE_PARTITION(9), UPLOAD_SHUFFLE_INDEX(10);
 
     private final byte id;
 
@@ -68,8 +68,9 @@ public abstract class BlockTransferMessage implements Encodable {
         case 5: return ShuffleServiceHeartbeat.decode(buf);
         case 6: return UploadBlockStream.decode(buf);
         case 7: return UploadShufflePartitionStream.decode(buf);
-        case 8: return UploadShuffleIndexStream.decode(buf);
+        case 8: return RegisterShuffleIndex.decode(buf);
         case 9: return OpenShufflePartition.decode(buf);
+        case 10: return UploadShuffleIndex.decode(buf);
         default: throw new IllegalArgumentException("Unknown message type: " + type);
       }
     }

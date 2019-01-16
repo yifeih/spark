@@ -119,9 +119,6 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       endPartition: Int,
       context: TaskContext,
       metrics: ShuffleReadMetricsReporter): ShuffleReader[K, C] = {
-    val shuffleIoPlugin = conf.get(SHUFFLE_IO_PLUGIN_CLASS)
-      .map(clazz => Utils.loadExtensions(classOf[ShuffleDataIO], Seq(clazz), conf).head)
-    shuffleIoPlugin.foreach(_.initialize())
     new BlockStoreShuffleReader(
       handle.asInstanceOf[BaseShuffleHandle[K, _, C]],
       conf.getAppId,
@@ -129,7 +126,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
       endPartition,
       context,
       metrics,
-      shuffleIoPlugin.map(_.readSupport()))
+      SparkEnv.get.shuffleDataIO.map(_.readSupport()))
   }
 
   /** Get a writer for a given partition. Called on executors by map tasks. */
@@ -141,9 +138,6 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
     numMapsForShuffle.putIfAbsent(
       handle.shuffleId, handle.asInstanceOf[BaseShuffleHandle[_, _, _]].numMaps)
     val env = SparkEnv.get
-    val shuffleIoPlugin = conf.get(SHUFFLE_IO_PLUGIN_CLASS)
-      .map(clazz => Utils.loadExtensions(classOf[ShuffleDataIO], Seq(clazz), conf).head)
-    shuffleIoPlugin.foreach(_.initialize())
     handle match {
       case unsafeShuffleHandle: SerializedShuffleHandle[K @unchecked, V @unchecked] =>
         new UnsafeShuffleWriter(
@@ -155,7 +149,7 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
           context,
           env.conf,
           metrics,
-          shuffleIoPlugin.map(_.writeSupport()).orNull)
+          env.shuffleDataIO.map(_.writeSupport()).orNull)
       case bypassMergeSortHandle: BypassMergeSortShuffleHandle[K @unchecked, V @unchecked] =>
         new BypassMergeSortShuffleWriter(
           env.blockManager,
@@ -164,10 +158,10 @@ private[spark] class SortShuffleManager(conf: SparkConf) extends ShuffleManager 
           mapId,
           env.conf,
           metrics,
-          shuffleIoPlugin.map(_.writeSupport()).orNull)
+          env.shuffleDataIO.map(_.writeSupport()).orNull)
       case other: BaseShuffleHandle[K @unchecked, V @unchecked, _] =>
         new SortShuffleWriter(
-          shuffleBlockResolver, other, mapId, context, shuffleIoPlugin.map(_.writeSupport()))
+          shuffleBlockResolver, other, mapId, context, env.shuffleDataIO.map(_.writeSupport()))
     }
   }
 

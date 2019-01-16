@@ -19,7 +19,7 @@ package org.apache.spark
 
 import java.io.File
 import java.net.Socket
-import java.util.{Locale, ServiceLoader}
+import java.util.Locale
 
 import com.google.common.collect.MapMaker
 import scala.collection.mutable
@@ -39,6 +39,7 @@ import org.apache.spark.scheduler.OutputCommitCoordinator.OutputCommitCoordinato
 import org.apache.spark.security.CryptoStreamUtils
 import org.apache.spark.serializer.{JavaSerializer, Serializer, SerializerManager}
 import org.apache.spark.shuffle.{DefaultShuffleServiceAddressProvider, ShuffleManager, ShuffleServiceAddressProviderFactory}
+import org.apache.spark.shuffle.api.ShuffleDataIO
 import org.apache.spark.storage._
 import org.apache.spark.util.{RpcUtils, Utils}
 
@@ -65,6 +66,7 @@ class SparkEnv (
     val blockManager: BlockManager,
     val securityManager: SecurityManager,
     val metricsSystem: MetricsSystem,
+    val shuffleDataIO: Option[ShuffleDataIO],
     val memoryManager: MemoryManager,
     val outputCommitCoordinator: OutputCommitCoordinator,
     val conf: SparkConf) extends Logging {
@@ -383,6 +385,9 @@ object SparkEnv extends Logging {
       ms
     }
 
+    val shuffleIoPlugin = conf.get(SHUFFLE_IO_PLUGIN_CLASS)
+      .map(clazz => Utils.loadExtensions(classOf[ShuffleDataIO], Seq(clazz), conf).head)
+
     val outputCommitCoordinator = mockOutputCommitCoordinator.getOrElse {
       new OutputCommitCoordinator(conf, isDriver)
     }
@@ -402,6 +407,7 @@ object SparkEnv extends Logging {
       blockManager,
       securityManager,
       metricsSystem,
+      shuffleIoPlugin,
       memoryManager,
       outputCommitCoordinator,
       conf)

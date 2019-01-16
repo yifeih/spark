@@ -269,7 +269,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           }
         }
       }
-      mapOutputWriter.commitAllPartitions(lengths);
+      mapOutputWriter.commitAllPartitions();
       shuffleLocation = OptionConverters.toScala(mapOutputWriter.getShuffleLocation());
     } catch (Exception e) {
       try {
