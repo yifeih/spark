@@ -144,7 +144,7 @@ private[spark] class CompressedMapStatus(
     out.write(compressedSizes)
     if (shuffleLoc.isDefined) {
       out.writeBoolean(true)
-      shuffleLoc.get.writeExternal(out)
+      out.writeObject(shuffleLocation.get)
     } else {
       out.writeBoolean(false)
     }
@@ -217,7 +217,7 @@ private[spark] class HighlyCompressedMapStatus private (
     }
     if (shuffleLoc.isDefined) {
       out.writeBoolean(true)
-      shuffleLoc.get.writeExternal(out)
+      out.writeObject(shuffleLoc.get)
     } else {
       out.writeBoolean(false)
     }
