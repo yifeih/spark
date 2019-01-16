@@ -44,7 +44,7 @@ public class ExternalShuffleDataIO implements ShuffleDataIO {
     public ShuffleReadSupport readSupport() {
         return new ExternalShuffleReadSupport(
                 conf, securityManager.isAuthenticationEnabled(),
-                securityManager, hostname, port, mapOutputTracker);
+                securityManager, mapOutputTracker);
     }
 
     @Override
