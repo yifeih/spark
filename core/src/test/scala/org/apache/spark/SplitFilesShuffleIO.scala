@@ -56,7 +56,7 @@ class SplitFilesShuffleIO(conf: SparkConf) extends ShuffleDataIO {
         }
       }
 
-      override def commitAllPartitions(partitionLengths: Array[Long]): Unit = {}
+      override def commitAllPartitions(): Unit = {}
 
       override def abort(exception: Exception): Unit = {}
     }

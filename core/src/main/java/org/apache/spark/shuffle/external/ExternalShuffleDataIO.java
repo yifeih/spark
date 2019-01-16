@@ -2,7 +2,9 @@ package org.apache.spark.shuffle.external;
 
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkEnv;
+import org.apache.spark.network.TransportContext;
 import org.apache.spark.network.netty.SparkTransportConf;
+import org.apache.spark.network.server.NoOpRpcHandler;
 import org.apache.spark.network.util.TransportConf;
 import org.apache.spark.shuffle.api.ShuffleDataIO;
 import org.apache.spark.shuffle.api.ShuffleReadSupport;
@@ -12,44 +14,41 @@ import org.apache.spark.storage.BlockManager;
 
 public class ExternalShuffleDataIO implements ShuffleDataIO {
 
-    private static final String SHUFFLE_SERVICE_PORT_CONFIG = "spark.shuffle.service.port";
-    private static final String DEFAULT_SHUFFLE_PORT = "7337";
-
-    private static final SparkEnv sparkEnv = SparkEnv.get();
-    private static final BlockManager blockManager = sparkEnv.blockManager();
-
-    private final SparkConf sparkConf;
     private final TransportConf conf;
-    private final SecurityManager securityManager;
-    private final String hostname;
-    private final int port;
+    private final TransportContext context;
+    private static BlockManager blockManager;
+    private static SecurityManager securityManager;
+    private static String hostname;
+    private static int port;
 
     public ExternalShuffleDataIO(
             SparkConf sparkConf) {
-        this.sparkConf = sparkConf;
         this.conf = SparkTransportConf.fromSparkConf(sparkConf, "shuffle", 1);
-
-        this.securityManager = sparkEnv.securityManager();
-        this.hostname = blockManager.getRandomShuffleHost();
-        this.port = blockManager.getRandomShufflePort();
+        // Close idle connections
+        this.context = new TransportContext(conf, new NoOpRpcHandler(), true, true);
     }
 
     @Override
     public void initialize() {
-        // TODO: move registerDriver and registerExecutor here
+        SparkEnv env = SparkEnv.get();
+        blockManager = env.blockManager();
+        securityManager = env.securityManager();
+        hostname = blockManager.getRandomShuffleHost();
+        port = blockManager.getRandomShufflePort();
+        // TODO: Register Driver and Executor
     }
 
     @Override
     public ShuffleReadSupport readSupport() {
         return new ExternalShuffleReadSupport(
-                conf, securityManager.isAuthenticationEnabled(),
-                securityManager, hostname, port);
+            conf, context, securityManager.isAuthenticationEnabled(),
+            securityManager, hostname, port);
     }
 
     @Override
     public ShuffleWriteSupport writeSupport() {
         return new ExternalShuffleWriteSupport(
-                conf, securityManager.isAuthenticationEnabled(),
-                securityManager, hostname, port);
+            conf, context, securityManager.isAuthenticationEnabled(),
+            securityManager, hostname, port);
     }
 }

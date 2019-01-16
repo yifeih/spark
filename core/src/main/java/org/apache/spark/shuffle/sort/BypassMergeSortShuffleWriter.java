@@ -267,7 +267,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           }
         }
       }
-      mapOutputWriter.commitAllPartitions(lengths);
+      mapOutputWriter.commitAllPartitions();
     } catch (Exception e) {
       try {
         mapOutputWriter.abort(e);

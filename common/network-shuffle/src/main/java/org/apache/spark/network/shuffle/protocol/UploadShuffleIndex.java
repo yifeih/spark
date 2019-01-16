@@ -25,26 +25,20 @@ import org.apache.spark.network.protocol.Encoders;
 import static org.apache.spark.network.shuffle.protocol.BlockTransferMessage.Type;
 
 /**
- * Upload shuffle partition request to the External Shuffle Service.
+ * Upload shuffle index request to the External Shuffle Service.
  */
-public class UploadShufflePartitionStream extends BlockTransferMessage {
+public class UploadShuffleIndex extends BlockTransferMessage {
     public final String appId;
     public final int shuffleId;
     public final int mapId;
-    public final int partitionId;
-    public final int partitionLength;
 
-    public UploadShufflePartitionStream(
+    public UploadShuffleIndex(
             String appId,
             int shuffleId,
-            int mapId,
-            int partitionId,
-            int partitionLength) {
+            int mapId) {
         this.appId = appId;
         this.shuffleId = shuffleId;
         this.mapId = mapId;
-        this.partitionId = partitionId;
-        this.partitionLength = partitionLength;
     }
 
     @Override
@@ -53,21 +47,19 @@ public class UploadShufflePartitionStream extends BlockTransferMessage {
             UploadShufflePartitionStream o = (UploadShufflePartitionStream) other;
             return Objects.equal(appId, o.appId)
                     && shuffleId == o.shuffleId
-                    && mapId == o.mapId
-                    && partitionId == o.partitionId
-                    && partitionLength == o.partitionLength;
+                    && mapId == o.mapId;
         }
         return false;
     }
 
     @Override
     protected Type type() {
-        return Type.UPLOAD_SHUFFLE_PARTITION_STREAM;
+        return Type.UPLOAD_SHUFFLE_INDEX;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hashCode(appId, shuffleId, mapId, partitionId, partitionLength);
+        return Objects.hashCode(appId, shuffleId, mapId);
     }
 
     @Override
@@ -76,14 +68,12 @@ public class UploadShufflePartitionStream extends BlockTransferMessage {
                 .add("appId", appId)
                 .add("shuffleId", shuffleId)
                 .add("mapId", mapId)
-                .add("partitionId", partitionId)
-                .add("partitionLength", partitionLength)
                 .toString();
     }
 
     @Override
     public int encodedLength() {
-        return Encoders.Strings.encodedLength(appId) + 4 + 4 + 4 + 4;
+        return Encoders.Strings.encodedLength(appId) + 4 + 4;
     }
 
     @Override
@@ -91,17 +81,12 @@ public class UploadShufflePartitionStream extends BlockTransferMessage {
         Encoders.Strings.encode(buf, appId);
         buf.writeInt(shuffleId);
         buf.writeInt(mapId);
-        buf.writeInt(partitionId);
-        buf.writeInt(partitionLength);
     }
 
-    public static UploadShufflePartitionStream decode(ByteBuf buf) {
+    public static UploadShuffleIndex decode(ByteBuf buf) {
         String appId = Encoders.Strings.decode(buf);
         int shuffleId = buf.readInt();
         int mapId = buf.readInt();
-        int partitionId = buf.readInt();
-        int partitionLength = buf.readInt();
-        return new UploadShufflePartitionStream(
-            appId, shuffleId, mapId, partitionId, partitionLength);
+        return new UploadShuffleIndex(appId, shuffleId, mapId);
     }
 }

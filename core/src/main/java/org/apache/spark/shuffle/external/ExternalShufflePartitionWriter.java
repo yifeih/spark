@@ -65,10 +65,10 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
         };
         TransportClient client = null;
         try {
-            ByteBuffer streamHeader = new UploadShufflePartitionStream(appId, shuffleId, mapId,
-                partitionId).toByteBuffer();
             byte[] buf = partitionBuffer.toByteArray();
             int size = buf.length;
+            ByteBuffer streamHeader = new UploadShufflePartitionStream(appId, shuffleId, mapId,
+                    partitionId, size).toByteBuffer();
             ManagedBuffer managedBuffer = new NioManagedBuffer(ByteBuffer.wrap(buf));
             client = clientFactory.createUnmanagedClient(hostName, port);
             client.setClientId(String.format("data-%s-%d-%d-%d",

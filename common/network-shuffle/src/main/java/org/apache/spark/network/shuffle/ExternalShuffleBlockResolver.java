@@ -70,9 +70,6 @@ public class ExternalShuffleBlockResolver {
   private static final String APP_KEY_PREFIX = "AppExecShuffleInfo";
   private static final StoreVersion CURRENT_VERSION = new StoreVersion(1, 0);
 
-  // TODO: Dont necessarily write to local
-  private final File shuffleDir;
-
   private static final Pattern MULTIPLE_SEPARATORS = Pattern.compile(File.separator + "{2,}");
 
   // Map containing all registered executors' metadata.
@@ -96,8 +93,8 @@ public class ExternalShuffleBlockResolver {
   final DB db;
 
   private final List<String> knownManagers = Arrays.asList(
-          "org.apache.spark.shuffle.sort.SortShuffleManager",
-          "org.apache.spark.shuffle.unsafe.UnsafeShuffleManager");
+    "org.apache.spark.shuffle.sort.SortShuffleManager",
+     "org.apache.spark.shuffle.unsafe.UnsafeShuffleManager");
 
   public ExternalShuffleBlockResolver(TransportConf conf, File registeredExecutorFile)
       throws IOException {
@@ -136,16 +133,12 @@ public class ExternalShuffleBlockResolver {
       executors = Maps.newConcurrentMap();
     }
 
-    // TODO: Remove local writes
-    this.shuffleDir = Files.createTempDirectory("spark-shuffle-dir").toFile();
-
     this.directoryCleaner = directoryCleaner;
   }
 
   public int getRegisteredExecutorsSize() {
     return executors.size();
   }
-
 
   /** Registers a new Executor with all the configuration we need to find its shuffle files. */
   public void registerExecutor(
@@ -313,8 +306,8 @@ public class ExternalShuffleBlockResolver {
    * Hashes a filename into the corresponding local directory, in a manner consistent with
    * Spark's DiskBlockManager.getFile().
    */
-
-  public static File getFile(String[] localDirs, int subDirsPerLocalDir, String filename) {
+  @VisibleForTesting
+  static File getFile(String[] localDirs, int subDirsPerLocalDir, String filename) {
     int hash = JavaUtils.nonNegativeHash(filename);
     String localDir = localDirs[hash % localDirs.length];
     int subDirId = (hash / localDirs.length) % subDirsPerLocalDir;

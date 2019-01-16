@@ -21,7 +21,7 @@ public interface ShuffleMapOutputWriter {
 
   ShufflePartitionWriter newPartitionWriter(int partitionId);
 
-  void commitAllPartitions(long[] partitionLengths);
+  void commitAllPartitions();
 
   void abort(Exception exception);
 }

@@ -563,7 +563,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           throw e;
         }
       }
-      mapOutputWriter.commitAllPartitions(partitionLengths);
+      mapOutputWriter.commitAllPartitions();
       threwException = false;
     } catch (Exception e) {
       try {
