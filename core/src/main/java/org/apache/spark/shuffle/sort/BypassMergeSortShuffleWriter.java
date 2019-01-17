@@ -121,6 +121,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     this.shuffleBlockResolver = shuffleBlockResolver;
     this.pluggableWriteSupport = pluggableWriteSupport;
     this.appId = conf.getAppId();
+    this.shuffleLocations = new ShuffleLocation[numPartitions];
   }
 
   @Override
@@ -128,7 +129,6 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     assert (partitionWriters == null);
     if (!records.hasNext()) {
       partitionLengths = new long[numPartitions];
-      shuffleLocations = new ShuffleLocation[numPartitions];
       shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, null);
       mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths, shuffleLocations);
       return;

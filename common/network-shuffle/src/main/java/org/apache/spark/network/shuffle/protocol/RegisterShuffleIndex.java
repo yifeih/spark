@@ -43,8 +43,8 @@ public class RegisterShuffleIndex extends BlockTransferMessage {
 
     @Override
     public boolean equals(Object other) {
-        if (other != null && other instanceof UploadShufflePartitionStream) {
-            UploadShufflePartitionStream o = (UploadShufflePartitionStream) other;
+        if (other != null && other instanceof RegisterShuffleIndex) {
+            RegisterShuffleIndex o = (RegisterShuffleIndex) other;
             return Objects.equal(appId, o.appId)
                     && shuffleId == o.shuffleId
                     && mapId == o.mapId;
