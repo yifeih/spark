@@ -48,13 +48,13 @@ public class ExternalShuffleReadSupport implements ShuffleReadSupport {
         if (authEnabled) {
             bootstraps.add(new AuthClientBootstrap(conf, appId, secretKeyHolder));
         }
-        TransportClientFactory clientFactory = context.createClientFactory(bootstraps);
-        Optional<ShuffleLocation> maybeShuffleLocation = OptionConverters.toJava(mapOutputTracker.getShuffleLocation(shuffleId, mapId));
+        Optional<ShuffleLocation> maybeShuffleLocation = OptionConverters.toJava(mapOutputTracker.getShuffleLocation(shuffleId, mapId, 0));
         assert maybeShuffleLocation.isPresent();
         ExternalShuffleLocation externalShuffleLocation = (ExternalShuffleLocation) maybeShuffleLocation.get();
         logger.info(String.format("Found external shuffle location on node: %s:%d",
                 externalShuffleLocation.getShuffleHostname(),
                 externalShuffleLocation.getShufflePort()));
+        TransportClientFactory clientFactory = context.createClientFactory(bootstraps);
         try {
             return new ExternalShufflePartitionReader(clientFactory,
                 externalShuffleLocation.getShuffleHostname(),

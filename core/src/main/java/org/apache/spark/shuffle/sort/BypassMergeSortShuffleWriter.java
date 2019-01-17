@@ -17,24 +17,8 @@
 
 package org.apache.spark.shuffle.sort;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import javax.annotation.Nullable;
-
-import scala.None$;
-import scala.Option;
-import scala.Product2;
-import scala.Tuple2;
-import scala.collection.Iterator;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.io.Closeables;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.apache.spark.Partitioner;
 import org.apache.spark.ShuffleDependency;
 import org.apache.spark.SparkConf;
@@ -42,15 +26,25 @@ import org.apache.spark.scheduler.MapStatus;
 import org.apache.spark.scheduler.MapStatus$;
 import org.apache.spark.serializer.Serializer;
 import org.apache.spark.serializer.SerializerInstance;
-import org.apache.spark.shuffle.ShuffleWriteMetricsReporter;
 import org.apache.spark.shuffle.IndexShuffleBlockResolver;
+import org.apache.spark.shuffle.ShuffleWriteMetricsReporter;
 import org.apache.spark.shuffle.ShuffleWriter;
+import org.apache.spark.shuffle.api.CommittedPartition;
 import org.apache.spark.shuffle.api.ShuffleMapOutputWriter;
 import org.apache.spark.shuffle.api.ShufflePartitionWriter;
 import org.apache.spark.shuffle.api.ShuffleWriteSupport;
 import org.apache.spark.storage.*;
 import org.apache.spark.util.Utils;
-import scala.compat.java8.OptionConverters;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import scala.None$;
+import scala.Option;
+import scala.Product2;
+import scala.Tuple2;
+import scala.collection.Iterator;
+
+import javax.annotation.Nullable;
+import java.io.*;
 
 /**
  * This class implements sort-based shuffle's hash-style shuffle fallback path. This write path
@@ -96,7 +90,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   private FileSegment[] partitionWriterSegments;
   @Nullable private MapStatus mapStatus;
   private long[] partitionLengths;
-  private Option<ShuffleLocation> shuffleLocation = Option.empty();
+  private ShuffleLocation[] shuffleLocations;
 
   /**
    * Are we in the process of stopping? Because map tasks can call stop() with success = true
@@ -134,8 +128,9 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     assert (partitionWriters == null);
     if (!records.hasNext()) {
       partitionLengths = new long[numPartitions];
+      shuffleLocations = new ShuffleLocation[numPartitions];
       shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, null);
-      mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths, shuffleLocation);
+      mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths, shuffleLocations);
       return;
     }
     final SerializerInstance serInstance = serializer.newInstance();
@@ -181,7 +176,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         }
       }
     }
-    mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths, shuffleLocation);
+    mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths, shuffleLocations);
   }
 
   @VisibleForTesting
@@ -253,7 +248,11 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
             try (OutputStream out = writer.openPartitionStream()) {
               Utils.copyStream(in, out, false, false);
             }
-            lengths[i] = writer.commitAndGetTotalLength();
+            CommittedPartition committedPartition = writer.commitPartition();
+            lengths[i] = committedPartition.length();
+            if (committedPartition.shuffleLocation().isPresent()) {
+              shuffleLocations[i] = committedPartition.shuffleLocation().get();
+            }
             copyThrewException = false;
           } catch (Exception e) {
             try {
@@ -270,7 +269,6 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         }
       }
       mapOutputWriter.commitAllPartitions();
-      shuffleLocation = OptionConverters.toScala(mapOutputWriter.getShuffleLocation());
     } catch (Exception e) {
       try {
         mapOutputWriter.abort(e);

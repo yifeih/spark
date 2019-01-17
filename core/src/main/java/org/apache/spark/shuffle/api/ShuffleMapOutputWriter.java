@@ -17,17 +17,11 @@
 
 package org.apache.spark.shuffle.api;
 
-import org.apache.spark.storage.ShuffleLocation;
-
-import java.util.Optional;
-
 public interface ShuffleMapOutputWriter {
 
   ShufflePartitionWriter newPartitionWriter(int partitionId);
 
   void commitAllPartitions();
-
-  Optional<ShuffleLocation> getShuffleLocation();
 
   void abort(Exception exception);
 }

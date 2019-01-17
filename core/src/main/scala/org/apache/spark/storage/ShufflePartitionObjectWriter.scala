@@ -55,11 +55,11 @@ private[spark] class ShufflePartitionObjectWriter(
     require(objectOutputStream != null, "Cannot commit a partition that has not been started.")
     require(currentWriter != null, "Cannot commit a partition that has not been started.")
     objectOutputStream.close()
-    val length = currentWriter.commitAndGetTotalLength()
+    val length = currentWriter.commitPartition()
     buffer.reset()
     currentWriter = null
     objectOutputStream = null
-    length
+    length.length() // TODO: update this
   }
 
   def abortCurrentPartition(throwable: Exception): Unit = {

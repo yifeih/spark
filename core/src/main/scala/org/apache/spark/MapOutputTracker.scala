@@ -303,7 +303,7 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
   def getMapSizesByExecutorId(shuffleId: Int, startPartition: Int, endPartition: Int)
       : Iterator[(BlockManagerId, Seq[(BlockId, Long)])]
 
-  def getShuffleLocation(shuffleId: Int, mapId: Int) : Option[ShuffleLocation]
+  def getShuffleLocation(shuffleId: Int, mapId: Int, reduceId: Int) : Option[ShuffleLocation]
 
   /**
    * Deletes map output status information for the specified shuffle stage.
@@ -679,9 +679,10 @@ private[spark] class MapOutputTrackerMaster(
     shuffleStatuses.clear()
   }
 
-  override def getShuffleLocation(shuffleId: Int, mapId: Int): Option[ShuffleLocation] = {
+  override def getShuffleLocation(shuffleId: Int, mapId: Int, reduceId: Int):
+    Option[ShuffleLocation] = {
     shuffleStatuses.get(shuffleId) match {
-      case Some(shuffleStatus) => shuffleStatus.mapStatuses(mapId).shuffleLocation
+      case Some(shuffleStatus) => shuffleStatus.mapStatuses(mapId).shuffleLocationForBlock(reduceId)
       case None => Option.empty
     }
   }
@@ -799,9 +800,10 @@ private[spark] class MapOutputTrackerWorker(conf: SparkConf) extends MapOutputTr
     }
   }
 
-  override def getShuffleLocation(shuffleId: Int, mapId: Int): Option[ShuffleLocation] = {
+  override def getShuffleLocation(shuffleId: Int, mapId: Int, reduceId: Int):
+    Option[ShuffleLocation] = {
     mapStatuses.get(shuffleId) match {
-      case Some(shuffleStatus) => shuffleStatus(mapId).shuffleLocation
+      case Some(shuffleStatus) => shuffleStatus(mapId).shuffleLocationForBlock(reduceId)
       case None => Option.empty
     }
   }

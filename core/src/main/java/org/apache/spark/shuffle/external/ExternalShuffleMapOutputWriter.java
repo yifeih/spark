@@ -6,12 +6,10 @@ import org.apache.spark.network.shuffle.protocol.RegisterShuffleIndex;
 import org.apache.spark.network.shuffle.protocol.UploadShuffleIndex;
 import org.apache.spark.shuffle.api.ShuffleMapOutputWriter;
 import org.apache.spark.shuffle.api.ShufflePartitionWriter;
-import org.apache.spark.storage.ShuffleLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
-import java.util.Optional;
 
 
 public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
@@ -86,11 +84,6 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
             logger.error("Encountered error while creating transport client", e);
             throw new RuntimeException(e);
         }
-    }
-
-    @Override
-    public Optional<ShuffleLocation> getShuffleLocation() {
-        return Optional.of(new ExternalShuffleLocation(hostName, port));
     }
 
     @Override

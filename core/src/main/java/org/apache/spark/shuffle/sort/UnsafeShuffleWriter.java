@@ -22,11 +22,11 @@ import java.io.*;
 import java.nio.channels.FileChannel;
 import java.util.Iterator;
 
+import org.apache.spark.shuffle.api.CommittedPartition;
 import org.apache.spark.storage.ShuffleLocation;
 import scala.Option;
 import scala.Product2;
 import scala.collection.JavaConverters;
-import scala.compat.java8.OptionConverters;
 import scala.reflect.ClassTag;
 import scala.reflect.ClassTag$;
 
@@ -91,7 +91,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
 
   @Nullable private MapStatus mapStatus;
   @Nullable private ShuffleExternalSorter sorter;
-  private Option<ShuffleLocation> shuffleLocation = Option.empty();
+  private ShuffleLocation[] shuffleLocations;
   private long peakMemoryUsedBytes = 0;
 
   /** Subclass of ByteArrayOutputStream that exposes `buf` directly. */
@@ -158,6 +158,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       (int) (long) sparkConf.get(package$.MODULE$.SHUFFLE_FILE_BUFFER_SIZE()) * 1024;
     this.outputBufferSizeInBytes =
       (int) (long) sparkConf.get(package$.MODULE$.SHUFFLE_UNSAFE_FILE_OUTPUT_BUFFER_SIZE()) * 1024;
+    this.shuffleLocations = new ShuffleLocation[numPartitions];
     open();
   }
 
@@ -260,7 +261,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         logger.error("Error while deleting temp file {}", tmp.getAbsolutePath());
       }
     }
-    mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths, shuffleLocation);
+    mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths, shuffleLocations);
   }
 
   @VisibleForTesting
@@ -307,6 +308,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         return new long[partitioner.numPartitions()];
       } else if (spills.length == 1) {
         if (pluggableWriteSupport != null) {
+          // TODO: should this be returning a partition length?
           writeSingleSpillFileUsingPluggableWriter(spills[0], compressionCodec);
         } else {
           // Here, we don't need to perform any metrics updates because the bytes written to this
@@ -555,7 +557,11 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
               }
             }
           }
-          partitionLengths[partition] = writer.commitAndGetTotalLength();
+          CommittedPartition committedPartition = writer.commitPartition();
+          if (committedPartition.shuffleLocation().isPresent()) {
+            shuffleLocations[partition] = committedPartition.shuffleLocation().get();
+          }
+          partitionLengths[partition] = committedPartition.length();
           writeMetrics.incBytesWritten(partitionLengths[partition]);
         } catch (Exception e) {
           try {
@@ -567,7 +573,6 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         }
       }
       mapOutputWriter.commitAllPartitions();
-      shuffleLocation = OptionConverters.toScala(mapOutputWriter.getShuffleLocation());
       threwException = false;
     } catch (Exception e) {
       try {
@@ -621,7 +626,11 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         } finally {
           partitionInputStream.close();
         }
-        writeMetrics.incBytesWritten(writer.commitAndGetTotalLength());
+        CommittedPartition committedPartition = writer.commitPartition();
+        if (committedPartition.shuffleLocation().isPresent()) {
+          shuffleLocations[partition] = committedPartition.shuffleLocation().get();
+        }
+        writeMetrics.incBytesWritten(committedPartition.length());
       }
       threwException = false;
     } catch (Exception e) {

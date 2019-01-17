@@ -48,6 +48,7 @@ object GroupByShuffleTest {
       .collect()
 
     println(wordCountsWithGroup2.mkString(","))
+      Thread.sleep(100000)
 
     spark.stop()
   }

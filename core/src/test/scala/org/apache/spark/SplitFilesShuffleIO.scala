@@ -20,7 +20,6 @@ package org.apache.spark
 import java.io._
 import java.nio.file.Paths
 import java.util.Optional
-
 import javax.ws.rs.core.UriBuilder
 
 import org.apache.spark.shuffle.api._
@@ -52,8 +51,14 @@ class SplitFilesShuffleIO(conf: SparkConf) extends ShuffleDataIO {
             new FileOutputStream(shuffleFile)
           }
 
-          override def commitAndGetTotalLength(): Long =
-            resolvePartitionFile(appId, shuffleId, mapId, partitionId).length
+          override def commitPartition(): CommittedPartition = {
+            new CommittedPartition {
+              override def length(): Long =
+                resolvePartitionFile(appId, shuffleId, mapId, partitionId).length
+
+              override def shuffleLocation(): Optional[ShuffleLocation] = Optional.empty()
+            }
+          }
 
           override def abort(failureReason: Exception): Unit = {}
         }
@@ -62,14 +67,11 @@ class SplitFilesShuffleIO(conf: SparkConf) extends ShuffleDataIO {
       override def commitAllPartitions(): Unit = {}
 
       override def abort(exception: Exception): Unit = {}
-
-      override def getShuffleLocation: Optional[ShuffleLocation] = Optional.empty()
     }
   }
 
   private def resolvePartitionFile(
       appId: String, shuffleId: Int, mapId: Int, reduceId: Int): File = {
-  import java.io.OutputStream
     Paths.get(UriBuilder.fromUri(shuffleDir.toURI)
       .path(appId)
       .path(shuffleId.toString)
