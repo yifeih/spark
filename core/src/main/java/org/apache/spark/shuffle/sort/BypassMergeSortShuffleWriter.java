@@ -122,7 +122,6 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     this.shuffleBlockResolver = shuffleBlockResolver;
     this.pluggableWriteSupport = pluggableWriteSupport;
     this.appId = conf.getAppId();
-//    this.committedPartitions = new CommittedPartition[numPartitions];
   }
 
   @Override
@@ -182,9 +181,6 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         }
       }
     }
-    logger.info("value of committedPartitions: " + committedPartitions);
-    logger.info("length of committed partitions:" + committedPartitions.length);
-    logger.info("length of committed partition value: " + committedPartitions[0].length());
     mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), committedPartitions);
   }
 

@@ -33,7 +33,7 @@ import org.roaringbitmap.RoaringBitmap
 import org.apache.spark.{SharedSparkContext, SparkConf, SparkFunSuite}
 import org.apache.spark.scheduler.HighlyCompressedMapStatus
 import org.apache.spark.serializer.KryoTest._
-import org.apache.spark.storage.{BlockManagerId, ShuffleLocation}
+import org.apache.spark.storage.{BlockManagerId}
 import org.apache.spark.util.{ThreadUtils, Utils}
 
 class KryoSerializerSuite extends SparkFunSuite with SharedSparkContext {
@@ -348,8 +348,7 @@ class KryoSerializerSuite extends SparkFunSuite with SharedSparkContext {
     val denseBlockSizes = new Array[Long](5000)
     val sparseBlockSizes = Array[Long](0L, 1L, 0L, 2L)
     Seq(denseBlockSizes, sparseBlockSizes).foreach { blockSizes =>
-      ser.serialize(HighlyCompressedMapStatus(
-        BlockManagerId("exec-1", "host", 1234), blockSizes))
+      ser.serialize(HighlyCompressedMapStatus(BlockManagerId("exec-1", "host", 1234), blockSizes))
     }
   }
 

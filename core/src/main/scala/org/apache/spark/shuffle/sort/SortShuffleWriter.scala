@@ -70,7 +70,6 @@ private[spark] class SortShuffleWriter[K, V, C](
     val tmp = Utils.tempFileWith(output)
     try {
       val blockId = ShuffleBlockId(dep.shuffleId, mapId, IndexShuffleBlockResolver.NOOP_REDUCE_ID)
-      // TODO: fix this, return committed partition
       val committedPartitions = pluggableWriteSupport.map { writeSupport =>
         sorter.writePartitionedToExternalShuffleWriteSupport(mapId, dep.shuffleId, writeSupport)
       }.getOrElse(sorter.writePartitionedFile(blockId, tmp))

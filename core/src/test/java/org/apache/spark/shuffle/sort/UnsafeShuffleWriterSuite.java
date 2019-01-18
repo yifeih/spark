@@ -685,17 +685,7 @@ public class UnsafeShuffleWriterSuite {
               }
               int length = partitionBytes.length;
               partitionSizesInMergedFile[partitionId] = length;
-              return new CommittedPartition() {
-                @Override
-                public long length() {
-                  return length;
-                }
-
-                @Override
-                public Optional<ShuffleLocation> shuffleLocation() {
-                  return Optional.empty();
-                }
-              };
+              return new LocalCommittedPartition(length);
             }
 
             @Override
