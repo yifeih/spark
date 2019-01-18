@@ -33,7 +33,7 @@ import org.roaringbitmap.RoaringBitmap
 import org.apache.spark.{SharedSparkContext, SparkConf, SparkFunSuite}
 import org.apache.spark.scheduler.HighlyCompressedMapStatus
 import org.apache.spark.serializer.KryoTest._
-import org.apache.spark.storage.{BlockManagerId}
+import org.apache.spark.storage.BlockManagerId
 import org.apache.spark.util.{ThreadUtils, Utils}
 
 class KryoSerializerSuite extends SparkFunSuite with SharedSparkContext {
