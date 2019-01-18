@@ -11,6 +11,7 @@ import org.slf4j.LoggerFactory;
 
 import java.nio.ByteBuffer;
 
+
 public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
 
     private final TransportClientFactory clientFactory;
@@ -79,8 +80,8 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
             logger.info("clientid: " + client.getClientId() + " " + client.isActive());
             client.sendRpcSync(uploadShuffleIndex, 60000);
         } catch (Exception e) {
-            client.close();
             logger.error("Encountered error while creating transport client", e);
+            client.close();
             throw new RuntimeException(e);
         }
     }

@@ -21,7 +21,7 @@ import java.nio.ByteBuffer
 
 import org.apache.spark.serializer.{SerializationStream, SerializerInstance}
 import org.apache.spark.shuffle.ShufflePartitionWriterOutputStream
-import org.apache.spark.shuffle.api.{ShuffleMapOutputWriter, ShufflePartitionWriter}
+import org.apache.spark.shuffle.api.{CommittedPartition, ShuffleMapOutputWriter, ShufflePartitionWriter}
 
 /**
  * Replicates the concept of {@link DiskBlockObjectWriter}, but with some key differences:
@@ -51,15 +51,15 @@ private[spark] class ShufflePartitionObjectWriter(
     objectOutputStream = serializerInstance.serializeStream(currentWriterStream)
   }
 
-  def commitCurrentPartition(): Long = {
+  def commitCurrentPartition(): CommittedPartition = {
     require(objectOutputStream != null, "Cannot commit a partition that has not been started.")
     require(currentWriter != null, "Cannot commit a partition that has not been started.")
     objectOutputStream.close()
-    val length = currentWriter.commitAndGetTotalLength()
+    val committedPartition = currentWriter.commitPartition()
     buffer.reset()
     currentWriter = null
     objectOutputStream = null
-    length
+    committedPartition
   }
 
   def abortCurrentPartition(throwable: Exception): Unit = {

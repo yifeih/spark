@@ -17,24 +17,8 @@
 
 package org.apache.spark.shuffle.sort;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.OutputStream;
-import javax.annotation.Nullable;
-
-import scala.None$;
-import scala.Option;
-import scala.Product2;
-import scala.Tuple2;
-import scala.collection.Iterator;
-
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.io.Closeables;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import org.apache.spark.Partitioner;
 import org.apache.spark.ShuffleDependency;
 import org.apache.spark.SparkConf;
@@ -42,14 +26,27 @@ import org.apache.spark.scheduler.MapStatus;
 import org.apache.spark.scheduler.MapStatus$;
 import org.apache.spark.serializer.Serializer;
 import org.apache.spark.serializer.SerializerInstance;
-import org.apache.spark.shuffle.ShuffleWriteMetricsReporter;
 import org.apache.spark.shuffle.IndexShuffleBlockResolver;
+import org.apache.spark.shuffle.ShuffleWriteMetricsReporter;
 import org.apache.spark.shuffle.ShuffleWriter;
+import org.apache.spark.shuffle.api.CommittedPartition;
 import org.apache.spark.shuffle.api.ShuffleMapOutputWriter;
 import org.apache.spark.shuffle.api.ShufflePartitionWriter;
 import org.apache.spark.shuffle.api.ShuffleWriteSupport;
 import org.apache.spark.storage.*;
 import org.apache.spark.util.Utils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import scala.None$;
+import scala.Option;
+import scala.Product2;
+import scala.Tuple2;
+import scala.collection.Iterator;
+
+import javax.annotation.Nullable;
+import java.io.*;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 
 /**
  * This class implements sort-based shuffle's hash-style shuffle fallback path. This write path
@@ -94,7 +91,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   private DiskBlockObjectWriter[] partitionWriters;
   private FileSegment[] partitionWriterSegments;
   @Nullable private MapStatus mapStatus;
-  private long[] partitionLengths;
+  private CommittedPartition[] committedPartitions;
 
   /**
    * Are we in the process of stopping? Because map tasks can call stop() with success = true
@@ -131,7 +128,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   public void write(Iterator<Product2<K, V>> records) throws IOException {
     assert (partitionWriters == null);
     if (!records.hasNext()) {
-      partitionLengths = new long[numPartitions];
+      long[] partitionLengths = new long[numPartitions];
       shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, null);
       mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths);
       return;
@@ -166,25 +163,30 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     }
 
     if (pluggableWriteSupport != null) {
-      partitionLengths = combineAndWritePartitionsUsingPluggableWriter();
+      committedPartitions = combineAndWritePartitionsUsingPluggableWriter();
+      logger.info("Successfully wrote partitions with pluggable writer");
     } else {
       File output = shuffleBlockResolver.getDataFile(shuffleId, mapId);
       File tmp = Utils.tempFileWith(output);
       try {
-        partitionLengths = combineAndWritePartitions(tmp);
-        shuffleBlockResolver.writeIndexFileAndCommit(shuffleId, mapId, partitionLengths, tmp);
+        committedPartitions = combineAndWritePartitions(tmp);
+        logger.info("Successfully wrote partitions without shuffle");
+        shuffleBlockResolver.writeIndexFileAndCommit(shuffleId,
+                mapId,
+                Arrays.stream(committedPartitions).mapToLong(p -> p.length()).toArray(),
+                tmp);
       } finally {
         if (tmp != null && tmp.exists() && !tmp.delete()) {
           logger.error("Error while deleting temp file {}", tmp.getAbsolutePath());
         }
       }
     }
-    mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), partitionLengths);
+    mapStatus = MapStatus$.MODULE$.apply(blockManager.shuffleServerId(), committedPartitions);
   }
 
   @VisibleForTesting
   long[] getPartitionLengths() {
-    return partitionLengths;
+    return Arrays.stream(committedPartitions).mapToLong(p -> p.length()).toArray();
   }
 
   /**
@@ -192,12 +194,12 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
    *
    * @return array of lengths, in bytes, of each partition of the file (used by map output tracker).
    */
-  private long[] combineAndWritePartitions(File outputFile) throws IOException {
+  private CommittedPartition[] combineAndWritePartitions(File outputFile) throws IOException {
     // Track location of the partition starts in the output file
-    final long[] lengths = new long[numPartitions];
+    final CommittedPartition[] partitions = new CommittedPartition[numPartitions];
     if (partitionWriters == null) {
       // We were passed an empty iterator
-      return lengths;
+      return partitions;
     }
     assert(outputFile != null);
     final FileOutputStream out = new FileOutputStream(outputFile, true);
@@ -210,7 +212,8 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           final FileInputStream in = new FileInputStream(file);
           boolean copyThrewException = true;
           try {
-            lengths[i] = Utils.copyStream(in, out, false, transferToEnabled);
+            partitions[i] =
+                    new LocalCommittedPartition(Utils.copyStream(in, out, false, transferToEnabled));
             copyThrewException = false;
           } finally {
             Closeables.close(in, copyThrewException);
@@ -225,15 +228,15 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       writeMetrics.incWriteTime(System.nanoTime() - writeStartTime);
     }
     partitionWriters = null;
-    return lengths;
+    return partitions;
   }
 
-  private long[] combineAndWritePartitionsUsingPluggableWriter() throws IOException {
+  private CommittedPartition[] combineAndWritePartitionsUsingPluggableWriter() throws IOException {
     // Track location of the partition starts in the output file
-    final long[] lengths = new long[numPartitions];
+    final CommittedPartition[] partitions = new CommittedPartition[numPartitions];
     if (partitionWriters == null) {
       // We were passed an empty iterator
-      return lengths;
+      return partitions;
     }
     assert(pluggableWriteSupport != null);
 
@@ -251,7 +254,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
             try (OutputStream out = writer.openPartitionStream()) {
               Utils.copyStream(in, out, false, false);
             }
-            lengths[i] = writer.commitAndGetTotalLength();
+            partitions[i] = writer.commitPartition();
             copyThrewException = false;
           } catch (Exception e) {
             try {
@@ -279,7 +282,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       writeMetrics.incWriteTime(System.nanoTime() - writeStartTime);
     }
     partitionWriters = null;
-    return lengths;
+    return partitions;
   }
 
   @Override

@@ -23,6 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
 
+import org.apache.spark.shuffle.api.CommittedPartition;
 import scala.Option;
 import scala.Product2;
 import scala.Tuple2;
@@ -675,7 +676,7 @@ public class UnsafeShuffleWriterSuite {
             }
 
             @Override
-            public long commitAndGetTotalLength() {
+            public CommittedPartition commitPartition() {
               byte[] partitionBytes = byteBuffer.toByteArray();
               try {
                 Files.write(mergedOutputFile.toPath(), partitionBytes, StandardOpenOption.APPEND);
@@ -684,7 +685,7 @@ public class UnsafeShuffleWriterSuite {
               }
               int length = partitionBytes.length;
               partitionSizesInMergedFile[partitionId] = length;
-              return length;
+              return new LocalCommittedPartition(length);
             }
 
             @Override

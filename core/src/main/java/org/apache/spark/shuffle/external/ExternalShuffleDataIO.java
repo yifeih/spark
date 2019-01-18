@@ -1,5 +1,6 @@
 package org.apache.spark.shuffle.external;
 
+import org.apache.spark.MapOutputTracker;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkEnv;
 import org.apache.spark.network.TransportContext;
@@ -20,6 +21,7 @@ public class ExternalShuffleDataIO implements ShuffleDataIO {
     private static SecurityManager securityManager;
     private static String hostname;
     private static int port;
+    private static MapOutputTracker mapOutputTracker;
 
     public ExternalShuffleDataIO(
             SparkConf sparkConf) {
@@ -35,14 +37,15 @@ public class ExternalShuffleDataIO implements ShuffleDataIO {
         securityManager = env.securityManager();
         hostname = blockManager.getRandomShuffleHost();
         port = blockManager.getRandomShufflePort();
+        mapOutputTracker = env.mapOutputTracker();
         // TODO: Register Driver and Executor
     }
 
     @Override
     public ShuffleReadSupport readSupport() {
         return new ExternalShuffleReadSupport(
-            conf, context, securityManager.isAuthenticationEnabled(),
-            securityManager, hostname, port);
+                conf, context, securityManager.isAuthenticationEnabled(),
+                securityManager, mapOutputTracker);
     }
 
     @Override

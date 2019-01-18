@@ -6,13 +6,16 @@ import org.apache.spark.network.client.RpcResponseCallback;
 import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.client.TransportClientFactory;
 import org.apache.spark.network.shuffle.protocol.UploadShufflePartitionStream;
+import org.apache.spark.shuffle.api.CommittedPartition;
 import org.apache.spark.shuffle.api.ShufflePartitionWriter;
+import org.apache.spark.storage.ShuffleLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Optional;
 
 public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
 
@@ -51,7 +54,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
     public OutputStream openPartitionStream() { return partitionBuffer; }
 
     @Override
-    public long commitAndGetTotalLength() {
+    public CommittedPartition commitPartition() {
         RpcResponseCallback callback = new RpcResponseCallback() {
             @Override
             public void onSuccess(ByteBuffer response) {
@@ -88,12 +91,11 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
         } finally {
             logger.info("Successfully sent partition to ESS");
         }
-        return totalLength;
+        return new ExternalCommittedPartition(totalLength, new ExternalShuffleLocation(hostName, port));
     }
 
     @Override
     public void abort(Exception failureReason) {
-        clientFactory.close();
         try {
             this.partitionBuffer.close();
         } catch(IOException e) {

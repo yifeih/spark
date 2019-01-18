@@ -1,6 +1,7 @@
 package org.apache.spark.shuffle.external;
 
 import com.google.common.collect.Lists;
+import org.apache.spark.MapOutputTracker;
 import org.apache.spark.network.TransportContext;
 import org.apache.spark.network.client.TransportClientBootstrap;
 import org.apache.spark.network.client.TransportClientFactory;
@@ -9,10 +10,13 @@ import org.apache.spark.network.sasl.SecretKeyHolder;
 import org.apache.spark.network.util.TransportConf;
 import org.apache.spark.shuffle.api.ShufflePartitionReader;
 import org.apache.spark.shuffle.api.ShuffleReadSupport;
+import org.apache.spark.storage.ShuffleLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import scala.compat.java8.OptionConverters;
 
 import java.util.List;
+import java.util.Optional;
 
 public class ExternalShuffleReadSupport implements ShuffleReadSupport {
 
@@ -22,22 +26,19 @@ public class ExternalShuffleReadSupport implements ShuffleReadSupport {
     private final TransportContext context;
     private final boolean authEnabled;
     private final SecretKeyHolder secretKeyHolder;
-    private final String hostName;
-    private final int port;
+    private final MapOutputTracker mapOutputTracker;
 
     public ExternalShuffleReadSupport(
             TransportConf conf,
             TransportContext context,
             boolean authEnabled,
             SecretKeyHolder secretKeyHolder,
-            String hostName,
-            int port) {
+            MapOutputTracker mapOutputTracker) {
         this.conf = conf;
         this.context = context;
         this.authEnabled = authEnabled;
         this.secretKeyHolder = secretKeyHolder;
-        this.hostName = hostName;
-        this.port = port;
+        this.mapOutputTracker = mapOutputTracker;
     }
 
     @Override
@@ -47,10 +48,20 @@ public class ExternalShuffleReadSupport implements ShuffleReadSupport {
         if (authEnabled) {
             bootstraps.add(new AuthClientBootstrap(conf, appId, secretKeyHolder));
         }
+        Optional<ShuffleLocation> maybeShuffleLocation = OptionConverters.toJava(mapOutputTracker.getShuffleLocation(shuffleId, mapId, 0));
+        assert maybeShuffleLocation.isPresent();
+        ExternalShuffleLocation externalShuffleLocation = (ExternalShuffleLocation) maybeShuffleLocation.get();
+        logger.info(String.format("Found external shuffle location on node: %s:%d",
+                externalShuffleLocation.getShuffleHostname(),
+                externalShuffleLocation.getShufflePort()));
         TransportClientFactory clientFactory = context.createClientFactory(bootstraps);
         try {
             return new ExternalShufflePartitionReader(clientFactory,
-                hostName, port, appId, shuffleId, mapId);
+                externalShuffleLocation.getShuffleHostname(),
+                    externalShuffleLocation.getShufflePort(),
+                    appId,
+                    shuffleId,
+                    mapId);
         } catch (Exception e) {
             clientFactory.close();
             logger.error("Encountered creating transport client for partition reader");

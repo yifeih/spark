@@ -35,7 +35,7 @@ import org.apache.spark.internal.config._
 import org.apache.spark.rpc.{RpcCallContext, RpcEndpoint, RpcEndpointRef, RpcEnv}
 import org.apache.spark.scheduler.MapStatus
 import org.apache.spark.shuffle._
-import org.apache.spark.storage.{BlockId, BlockManagerId, ShuffleBlockId}
+import org.apache.spark.storage.{BlockId, BlockManagerId, ShuffleBlockId, ShuffleLocation}
 import org.apache.spark.util._
 
 /**
@@ -302,6 +302,8 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
    */
   def getMapSizesByExecutorId(shuffleId: Int, startPartition: Int, endPartition: Int)
       : Iterator[(BlockManagerId, Seq[(BlockId, Long)])]
+
+  def getShuffleLocation(shuffleId: Int, mapId: Int, reduceId: Int) : Option[ShuffleLocation]
 
   /**
    * Deletes map output status information for the specified shuffle stage.
@@ -676,6 +678,14 @@ private[spark] class MapOutputTrackerMaster(
     trackerEndpoint = null
     shuffleStatuses.clear()
   }
+
+  override def getShuffleLocation(shuffleId: Int, mapId: Int, reduceId: Int):
+    Option[ShuffleLocation] = {
+    shuffleStatuses.get(shuffleId) match {
+      case Some(shuffleStatus) => shuffleStatus.mapStatuses(mapId).shuffleLocationForBlock(reduceId)
+      case None => Option.empty
+    }
+  }
 }
 
 /**
@@ -787,6 +797,14 @@ private[spark] class MapOutputTrackerWorker(conf: SparkConf) extends MapOutputTr
         epoch = newEpoch
         mapStatuses.clear()
       }
+    }
+  }
+
+  override def getShuffleLocation(shuffleId: Int, mapId: Int, reduceId: Int):
+    Option[ShuffleLocation] = {
+    mapStatuses.get(shuffleId) match {
+      case Some(shuffleStatus) => shuffleStatus(mapId).shuffleLocationForBlock(reduceId)
+      case None => Option.empty
     }
   }
 }

@@ -18,7 +18,6 @@
 package org.apache.spark
 
 import scala.collection.mutable.ArrayBuffer
-
 import org.mockito.Matchers.any
 import org.mockito.Mockito._
 
@@ -27,7 +26,7 @@ import org.apache.spark.broadcast.BroadcastManager
 import org.apache.spark.rpc.{RpcAddress, RpcCallContext, RpcEnv}
 import org.apache.spark.scheduler.{CompressedMapStatus, MapStatus}
 import org.apache.spark.shuffle.FetchFailedException
-import org.apache.spark.storage.{BlockManagerId, ShuffleBlockId}
+import org.apache.spark.storage.{BlockManagerId, ShuffleBlockId, ShuffleLocation}
 
 class MapOutputTrackerSuite extends SparkFunSuite {
   private val conf = new SparkConf
@@ -84,9 +83,9 @@ class MapOutputTrackerSuite extends SparkFunSuite {
     val compressedSize1000 = MapStatus.compressSize(1000L)
     val compressedSize10000 = MapStatus.compressSize(10000L)
     tracker.registerMapOutput(10, 0, MapStatus(BlockManagerId("a", "hostA", 1000),
-      Array(compressedSize1000, compressedSize10000)))
+      Array[Long](compressedSize1000, compressedSize10000)))
     tracker.registerMapOutput(10, 1, MapStatus(BlockManagerId("b", "hostB", 1000),
-      Array(compressedSize10000, compressedSize1000)))
+      Array[Long](compressedSize10000, compressedSize1000)))
     assert(tracker.containsShuffle(10))
     assert(tracker.getMapSizesByExecutorId(10, 0).nonEmpty)
     assert(0 == tracker.getNumCachedSerializedBroadcast)
@@ -107,9 +106,9 @@ class MapOutputTrackerSuite extends SparkFunSuite {
     val compressedSize1000 = MapStatus.compressSize(1000L)
     val compressedSize10000 = MapStatus.compressSize(10000L)
     tracker.registerMapOutput(10, 0, MapStatus(BlockManagerId("a", "hostA", 1000),
-        Array(compressedSize1000, compressedSize1000, compressedSize1000)))
+        Array[Long](compressedSize1000, compressedSize1000, compressedSize1000)))
     tracker.registerMapOutput(10, 1, MapStatus(BlockManagerId("b", "hostB", 1000),
-        Array(compressedSize10000, compressedSize1000, compressedSize1000)))
+        Array[Long](compressedSize10000, compressedSize1000, compressedSize1000)))
 
     assert(0 == tracker.getNumCachedSerializedBroadcast)
     // As if we had two simultaneous fetch failures
@@ -260,7 +259,8 @@ class MapOutputTrackerSuite extends SparkFunSuite {
       masterTracker.registerShuffle(20, 100)
       (0 until 100).foreach { i =>
         masterTracker.registerMapOutput(20, i, new CompressedMapStatus(
-          BlockManagerId("999", "mps", 1000), Array.fill[Long](4000000)(0)))
+          BlockManagerId("999", "mps", 1000), Array.fill[Long](4000000)(0),
+          Array.empty[ShuffleLocation]))
       }
       val senderAddress = RpcAddress("localhost", 12345)
       val rpcCallContext = mock(classOf[RpcCallContext])
