@@ -79,16 +79,6 @@ private[spark] object MapStatus extends Logging {
     }
   }
 
-  def apply(loc: BlockManagerId, uncompressedSizes: Array[Long],
-            shuffleLocations: Array[ShuffleLocation]): MapStatus = {
-    assert(uncompressedSizes.length == shuffleLocations.length)
-    if (uncompressedSizes.length > minPartitionsToUseHighlyCompressMapStatus) {
-      HighlyCompressedMapStatus(loc, uncompressedSizes, shuffleLocations)
-    } else {
-      new CompressedMapStatus(loc, uncompressedSizes, shuffleLocations)
-    }
-  }
-
   def apply(loc: BlockManagerId, uncompressedSizes: Array[Long]): MapStatus = {
     if (uncompressedSizes.length > minPartitionsToUseHighlyCompressMapStatus) {
       HighlyCompressedMapStatus(loc, uncompressedSizes, Array.empty[ShuffleLocation])
