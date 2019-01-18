@@ -22,7 +22,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
     private static final Logger logger =
         LoggerFactory.getLogger(ExternalShufflePartitionWriter.class);
 
-    private final TransportClient client;
+    private final TransportClientFactory clientFactory;
     private final String hostName;
     private final int port;
     private final String appId;
@@ -40,8 +40,8 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
             String appId,
             int shuffleId,
             int mapId,
-            int partitionId) throws IOException, InterruptedException {
-        this.client = clientFactory.createUnmanagedClient(hostName, port);
+            int partitionId) {
+        this.clientFactory = clientFactory;
         this.hostName = hostName;
         this.port = port;
         this.appId = appId;
@@ -66,13 +66,14 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
                 logger.error("Encountered an error uploading partition", e);
             }
         };
+        TransportClient client = null;
         try {
             byte[] buf = partitionBuffer.toByteArray();
             int size = buf.length;
             ByteBuffer streamHeader = new UploadShufflePartitionStream(appId, shuffleId, mapId,
                     partitionId, size).toByteBuffer();
             ManagedBuffer managedBuffer = new NioManagedBuffer(ByteBuffer.wrap(buf));
-
+            client = clientFactory.createUnmanagedClient(hostName, port);
             client.setClientId(String.format("data-%s-%d-%d-%d",
                     appId, shuffleId, mapId, partitionId));
             logger.info("clientid: " + client.getClientId() + " " + client.isActive());

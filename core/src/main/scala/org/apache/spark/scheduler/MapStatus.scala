@@ -24,6 +24,7 @@ import scala.collection.mutable
 
 import org.apache.spark.SparkEnv
 import org.apache.spark.internal.config
+import org.apache.spark.shuffle.api.CommittedPartition
 import org.apache.spark.storage.{BlockManagerId, ShuffleLocation}
 import org.apache.spark.util.Utils
 
@@ -56,6 +57,20 @@ private[spark] object MapStatus {
   private lazy val minPartitionsToUseHighlyCompressMapStatus = Option(SparkEnv.get)
     .map(_.conf.get(config.SHUFFLE_MIN_NUM_PARTS_TO_HIGHLY_COMPRESS))
     .getOrElse(config.SHUFFLE_MIN_NUM_PARTS_TO_HIGHLY_COMPRESS.defaultValue.get)
+
+  def apply(loc: BlockManagerId, committedPartitions: Array[CommittedPartition]): MapStatus = {
+    val shuffleLocationsArray = committedPartitions.map(a => {
+      a.shuffleLocation() match {
+        case empty if empty.isPresent => empty.get()
+        case _ => null
+      }
+    })
+    if (committedPartitions.length > minPartitionsToUseHighlyCompressMapStatus) {
+      HighlyCompressedMapStatus(loc, committedPartitions.map(_.length()), shuffleLocationsArray)
+    } else {
+      new CompressedMapStatus(loc, committedPartitions.map(_.length()), shuffleLocationsArray)
+    }
+  }
 
   def apply(loc: BlockManagerId, uncompressedSizes: Array[Long],
             shuffleLocations: Array[ShuffleLocation]): MapStatus = {

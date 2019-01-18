@@ -71,13 +71,16 @@ private[spark] class SortShuffleWriter[K, V, C](
     try {
       val blockId = ShuffleBlockId(dep.shuffleId, mapId, IndexShuffleBlockResolver.NOOP_REDUCE_ID)
       // TODO: fix this, return committed partition
-      val partitionLengths = pluggableWriteSupport.map { writeSupport =>
+      val committedPartitions = pluggableWriteSupport.map { writeSupport =>
         sorter.writePartitionedToExternalShuffleWriteSupport(mapId, dep.shuffleId, writeSupport)
       }.getOrElse(sorter.writePartitionedFile(blockId, tmp))
       if (pluggableWriteSupport.isEmpty) {
-        shuffleBlockResolver.writeIndexFileAndCommit(dep.shuffleId, mapId, partitionLengths, tmp)
+        shuffleBlockResolver.writeIndexFileAndCommit(dep.shuffleId,
+          mapId,
+          committedPartitions.map(_.length()),
+          tmp)
       }
-      mapStatus = MapStatus(blockManager.shuffleServerId, partitionLengths)
+      mapStatus = MapStatus(blockManager.shuffleServerId, committedPartitions)
     } finally {
       if (tmp.exists() && !tmp.delete()) {
         logError(s"Error while deleting temp file ${tmp.getAbsolutePath}")

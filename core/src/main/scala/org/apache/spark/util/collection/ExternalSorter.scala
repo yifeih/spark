@@ -18,18 +18,19 @@
 package org.apache.spark.util.collection
 
 import java.io._
-import java.util.Comparator
+import java.util.{Comparator, Optional}
 
+import com.google.common.io.ByteStreams
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-import com.google.common.io.ByteStreams
 
-import org.apache.spark.{util, _}
 import org.apache.spark.executor.ShuffleWriteMetrics
 import org.apache.spark.internal.Logging
 import org.apache.spark.serializer._
 import org.apache.spark.shuffle.api.{CommittedPartition, ShuffleWriteSupport}
+import org.apache.spark.shuffle.sort.LocalCommittedPartition
 import org.apache.spark.storage.{BlockId, DiskBlockObjectWriter, PairsWriter, ShuffleLocation, ShufflePartitionObjectWriter}
+import org.apache.spark.{util, _}
 
 /**
  * Sorts and potentially merges a number of key-value pairs of type (K, V) to produce key-combiner
@@ -682,10 +683,10 @@ private[spark] class ExternalSorter[K, V, C](
    */
   def writePartitionedFile(
       blockId: BlockId,
-      outputFile: File): Array[Long] = {
+      outputFile: File): Array[CommittedPartition] = {
 
     // Track location of each range in the output file
-    val lengths = new Array[Long](numPartitions)
+    val committedPartitions = new Array[CommittedPartition](numPartitions)
     val writer = blockManager.getDiskWriter(blockId, outputFile, serInstance, fileBufferSize,
       context.taskMetrics().shuffleWriteMetrics)
 
@@ -699,7 +700,7 @@ private[spark] class ExternalSorter[K, V, C](
           it.writeNext(writer)
         }
         val segment = writer.commitAndGet()
-        lengths(partitionId) = segment.length
+        committedPartitions(partitionId) = new LocalCommittedPartition(segment.length)
       }
     } else {
       // We must perform merge-sort; get an iterator by partition and write everything directly.
@@ -709,7 +710,7 @@ private[spark] class ExternalSorter[K, V, C](
             writer.write(elem._1, elem._2)
           }
           val segment = writer.commitAndGet()
-          lengths(id) = segment.length
+          committedPartitions(id) = new LocalCommittedPartition(segment.length)
         }
       }
     }
@@ -719,17 +720,17 @@ private[spark] class ExternalSorter[K, V, C](
     context.taskMetrics().incDiskBytesSpilled(diskBytesSpilled)
     context.taskMetrics().incPeakExecutionMemory(peakMemoryUsedBytes)
 
-    lengths
+    committedPartitions
   }
 
   /**
    * Write all partitions to some backend that is pluggable.
    */
   def writePartitionedToExternalShuffleWriteSupport(
-      mapId: Int, shuffleId: Int, writeSupport: ShuffleWriteSupport): Array[Long] = {
+      mapId: Int, shuffleId: Int, writeSupport: ShuffleWriteSupport): Array[CommittedPartition] = {
 
     // Track location of each range in the output file
-    val lengths = new Array[Long](numPartitions)
+    val committedPartitions = new Array[CommittedPartition](numPartitions)
     val mapOutputWriter = writeSupport.newMapOutputWriter(conf.getAppId, shuffleId, mapId)
     val writer = new ShufflePartitionObjectWriter(
       Math.min(serializerBatchSize, Integer.MAX_VALUE).toInt,
@@ -748,7 +749,7 @@ private[spark] class ExternalSorter[K, V, C](
             while (it.hasNext && it.nextPartition() == partitionId) {
               it.writeNext(writer)
             }
-            lengths(partitionId) = writer.commitCurrentPartition()
+            committedPartitions(partitionId) = writer.commitCurrentPartition()
           } catch {
             case e: Exception =>
               util.Utils.tryLogNonFatalError {
@@ -766,7 +767,7 @@ private[spark] class ExternalSorter[K, V, C](
               for (elem <- elements) {
                 writer.write(elem._1, elem._2)
               }
-              lengths(id) = writer.commitCurrentPartition()
+              committedPartitions(id) = writer.commitCurrentPartition()
             } catch {
               case e: Exception =>
                 util.Utils.tryLogNonFatalError {
@@ -790,7 +791,7 @@ private[spark] class ExternalSorter[K, V, C](
     context.taskMetrics().incDiskBytesSpilled(diskBytesSpilled)
     context.taskMetrics().incPeakExecutionMemory(peakMemoryUsedBytes)
 
-    lengths
+    committedPartitions
   }
 
   def stop(): Unit = {
