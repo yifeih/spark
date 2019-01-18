@@ -20,18 +20,12 @@ public class ExternalShuffleLocation implements ShuffleLocation {
 
     @Override
     public void writeExternal(ObjectOutput out) throws IOException {
-//        out.writeInt(shuffleHostname.length());
-//        out.writeChars(shuffleHostname);
         out.writeUTF(shuffleHostname);
         out.writeInt(shufflePort);
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-//        int size = in.readInt();
-//        byte[] buf = new byte[size];
-//        in.read(buf, 0, size);
-//        this.shuffleHostname = new String(buf);
+    public void readExternal(ObjectInput in) throws IOException {
         this.shuffleHostname = in.readUTF();
         this.shufflePort = in.readInt();
     }
@@ -42,22 +36,5 @@ public class ExternalShuffleLocation implements ShuffleLocation {
 
     public int getShufflePort() {
         return this.shufflePort;
-    }
-
-
-    public static void main(String[] args) throws IOException, ClassNotFoundException {
-        ExternalShuffleLocation externalShuffleLocation = new ExternalShuffleLocation("hostname", 1234);
-        ShuffleLocation shuffleLocation = (ShuffleLocation) externalShuffleLocation;
-
-        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-        ObjectOutputStream oos = new ObjectOutputStream(baos);
-        oos.writeObject(shuffleLocation);
-        oos.flush();
-
-
-        ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());
-        ObjectInputStream ois = new ObjectInputStream(bais);
-        ShuffleLocation newShuffLocation = (ShuffleLocation) ois.readObject();
-        System.out.println(newShuffLocation);
     }
 }

@@ -23,7 +23,7 @@ import org.roaringbitmap.RoaringBitmap
 import scala.collection.mutable
 
 import org.apache.spark.SparkEnv
-import org.apache.spark.internal.config
+import org.apache.spark.internal.{Logging, config}
 import org.apache.spark.shuffle.api.CommittedPartition
 import org.apache.spark.storage.{BlockManagerId, ShuffleLocation}
 import org.apache.spark.util.Utils
@@ -48,7 +48,7 @@ private[spark] sealed trait MapStatus {
 }
 
 
-private[spark] object MapStatus {
+private[spark] object MapStatus extends Logging {
 
   /**
    * Min partition number to use [[HighlyCompressedMapStatus]]. A bit ugly here because in test
@@ -59,16 +59,23 @@ private[spark] object MapStatus {
     .getOrElse(config.SHUFFLE_MIN_NUM_PARTS_TO_HIGHLY_COMPRESS.defaultValue.get)
 
   def apply(loc: BlockManagerId, committedPartitions: Array[CommittedPartition]): MapStatus = {
-    val shuffleLocationsArray = committedPartitions.map(a => {
-      a.shuffleLocation() match {
-        case empty if empty.isPresent => empty.get()
+    val shuffleLocationsArray = committedPartitions.map(partition => {
+      partition match {
+        case partition if partition != null && partition.shuffleLocation().isPresent
+          => partition.shuffleLocation().get()
         case _ => null
       }
     })
+    val lengthsArray = committedPartitions.map(partition => {
+      partition match {
+        case partition if partition != null => partition.length()
+        case _ => 0
+      }
+    })
     if (committedPartitions.length > minPartitionsToUseHighlyCompressMapStatus) {
-      HighlyCompressedMapStatus(loc, committedPartitions.map(_.length()), shuffleLocationsArray)
+      HighlyCompressedMapStatus(loc, lengthsArray, shuffleLocationsArray)
     } else {
-      new CompressedMapStatus(loc, committedPartitions.map(_.length()), shuffleLocationsArray)
+      new CompressedMapStatus(loc, lengthsArray, shuffleLocationsArray)
     }
   }
 
