@@ -33,7 +33,7 @@ class SplitFilesShuffleIO(conf: SparkConf) extends ShuffleDataIO {
   override def initialize(): Unit = {}
 
   override def readSupport(): ShuffleReadSupport = (appId: String, shuffleId: Int, mapId: Int) => {
-    reduceId: Int => {
+    (reduceId: Int, shuffleLocation: Optional[ShuffleLocation]) => {
       new FileInputStream(resolvePartitionFile(appId, shuffleId, mapId, reduceId))
     }
   }

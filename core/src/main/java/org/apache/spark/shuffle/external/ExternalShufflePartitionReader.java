@@ -4,14 +4,17 @@ import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.client.TransportClientFactory;
 import org.apache.spark.network.shuffle.protocol.OpenShufflePartition;
 import org.apache.spark.shuffle.api.ShufflePartitionReader;
+import org.apache.spark.storage.ShuffleLocation;
 import org.apache.spark.util.ByteBufferInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import scala.compat.java8.OptionConverters;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.Optional;
 
 public class ExternalShufflePartitionReader implements ShufflePartitionReader {
 
@@ -19,34 +22,36 @@ public class ExternalShufflePartitionReader implements ShufflePartitionReader {
         LoggerFactory.getLogger(ExternalShufflePartitionReader.class);
 
     private final TransportClientFactory clientFactory;
-    private final String hostName;
-    private final int port;
     private final String appId;
     private final int shuffleId;
     private final int mapId;
 
     public ExternalShufflePartitionReader(
             TransportClientFactory clientFactory,
-            String hostName,
-            int port,
             String appId,
             int shuffleId,
             int mapId) {
         this.clientFactory = clientFactory;
-        this.hostName = hostName;
-        this.port = port;
         this.appId = appId;
         this.shuffleId = shuffleId;
         this.mapId = mapId;
     }
 
     @Override
-    public InputStream fetchPartition(int reduceId) {
+    public InputStream fetchPartition(int reduceId, Optional<ShuffleLocation> shuffleLocation) {
+        assert shuffleLocation.isPresent() && shuffleLocation.get() instanceof ExternalShuffleLocation;
+        ExternalShuffleLocation externalShuffleLocation = (ExternalShuffleLocation) shuffleLocation.get();
+        logger.info(String.format("Found external shuffle location on node: %s:%d",
+                externalShuffleLocation.getShuffleHostname(),
+                externalShuffleLocation.getShufflePort()));
+        String hostname = externalShuffleLocation.getShuffleHostname();
+        int port = externalShuffleLocation.getShufflePort();
+
         OpenShufflePartition openMessage =
             new OpenShufflePartition(appId, shuffleId, mapId, reduceId);
         TransportClient client = null;
         try {
-            client = clientFactory.createUnmanagedClient(hostName, port);
+            client = clientFactory.createUnmanagedClient(hostname, port);
             String requestID = String.format(
                     "read-%s-%d-%d-%d", appId, shuffleId, mapId, reduceId);
             client.setClientId(requestID);

@@ -17,8 +17,10 @@
 
 package org.apache.spark.shuffle
 
+import scala.compat.java8.OptionConverters
+
 import org.apache.spark._
-import org.apache.spark.internal.{config, Logging}
+import org.apache.spark.internal.{Logging, config}
 import org.apache.spark.serializer.SerializerManager
 import org.apache.spark.shuffle.api.ShuffleReadSupport
 import org.apache.spark.storage._
@@ -54,10 +56,12 @@ private[spark] class BlockStoreShuffleReader[K, C](
           blockIds.map {
             case blockId@ShuffleBlockId(_, _, reduceId) =>
               (blockId, serializerManager.wrapStream(blockId,
-                reader.fetchPartition(reduceId)))
+                reader.fetchPartition(reduceId, OptionConverters.toJava(
+                  mapOutputTracker.getShuffleLocation(handle.shuffleId, mapId, reduceId)))))
             case dataBlockId@ShuffleDataBlockId(_, _, reduceId) =>
               (dataBlockId, serializerManager.wrapStream(dataBlockId,
-                reader.fetchPartition(reduceId)))
+                reader.fetchPartition(reduceId, OptionConverters.toJava(
+                  mapOutputTracker.getShuffleLocation(handle.shuffleId, mapId, reduceId)))))
             case invalid =>
               throw new IllegalArgumentException(s"Invalid block id $invalid")
           }
