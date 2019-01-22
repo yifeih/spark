@@ -17,6 +17,7 @@
 
 package org.apache.spark.shuffle.api;
 
+import java.io.IOException;
 import java.io.OutputStream;
 
 /**
@@ -27,18 +28,18 @@ public interface ShufflePartitionWriter {
   /**
    * Return a stream that should persist the bytes for this partition.
    */
-  OutputStream openPartitionStream();
+  OutputStream openPartitionStream() throws IOException;
 
   /**
    * Indicate that the partition was written successfully and there are no more incoming bytes.
    * Returns a {@link CommittedPartition} indicating information about that written partition.
    */
-  CommittedPartition commitPartition();
+  CommittedPartition commitPartition() throws IOException;
 
   /**
    * Indicate that the write has failed for some reason and the implementation can handle the
    * failure reason. After this method is called, this writer will be discarded; it's expected that
    * the implementation will close any underlying resources.
    */
-  void abort(Exception failureReason);
+  void abort(Exception failureReason) throws IOException;
 }

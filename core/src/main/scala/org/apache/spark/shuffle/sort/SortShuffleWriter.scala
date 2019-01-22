@@ -71,7 +71,7 @@ private[spark] class SortShuffleWriter[K, V, C](
     try {
       val blockId = ShuffleBlockId(dep.shuffleId, mapId, IndexShuffleBlockResolver.NOOP_REDUCE_ID)
       val committedPartitions = pluggableWriteSupport.map { writeSupport =>
-        sorter.writePartitionedToExternalShuffleWriteSupport(mapId, dep.shuffleId, writeSupport)
+        sorter.writePartitionedToExternalShuffleWriteSupport(blockId, writeSupport)
       }.getOrElse(sorter.writePartitionedFile(blockId, tmp))
       if (pluggableWriteSupport.isEmpty) {
         shuffleBlockResolver.writeIndexFileAndCommit(dep.shuffleId,

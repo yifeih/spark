@@ -16,11 +16,13 @@
  */
 package org.apache.spark.shuffle.api;
 
+import java.io.IOException;
+
 public interface ShuffleDataIO {
 
-  void initialize();
+  void initialize() throws IOException;
 
-  ShuffleReadSupport readSupport();
+  ShuffleReadSupport readSupport() throws IOException;
 
-  ShuffleWriteSupport writeSupport();
+  ShuffleWriteSupport writeSupport() throws IOException;
 }

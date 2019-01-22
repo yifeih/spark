@@ -17,11 +17,13 @@
 
 package org.apache.spark.shuffle.api;
 
+import java.io.IOException;
+
 public interface ShuffleMapOutputWriter {
 
-  ShufflePartitionWriter newPartitionWriter(int partitionId);
+  ShufflePartitionWriter newPartitionWriter(int partitionId) throws IOException;
 
-  void commitAllPartitions();
+  void commitAllPartitions() throws IOException;
 
-  void abort(Exception exception);
+  void abort(Exception exception) throws IOException;
 }

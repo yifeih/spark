@@ -139,10 +139,4 @@ class KubernetesShuffleServiceAddressProvider(
 
     override def onClose(e: KubernetesClientException): Unit = {}
   }
-
-  private implicit def toRunnable(func: () => Unit): Runnable = {
-    new Runnable {
-      override def run(): Unit = func()
-    }
-  }
 }

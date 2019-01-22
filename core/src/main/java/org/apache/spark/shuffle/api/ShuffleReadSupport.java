@@ -17,8 +17,11 @@
 
 package org.apache.spark.shuffle.api;
 
+import java.io.IOException;
+
 public interface ShuffleReadSupport {
 
-  ShufflePartitionReader newPartitionReader(String appId, int shuffleId, int mapId);
+  ShufflePartitionReader newPartitionReader(String appId, int shuffleId, int mapId)
+    throws IOException;
 
 }

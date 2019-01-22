@@ -24,13 +24,13 @@ import com.google.common.io.ByteStreams
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
+import org.apache.spark.{util, _}
 import org.apache.spark.executor.ShuffleWriteMetrics
 import org.apache.spark.internal.Logging
 import org.apache.spark.serializer._
 import org.apache.spark.shuffle.api.{CommittedPartition, ShuffleWriteSupport}
 import org.apache.spark.shuffle.sort.LocalCommittedPartition
-import org.apache.spark.storage.{BlockId, DiskBlockObjectWriter, PairsWriter, ShuffleLocation, ShufflePartitionObjectWriter}
-import org.apache.spark.{util, _}
+import org.apache.spark.storage._
 
 /**
  * Sorts and potentially merges a number of key-value pairs of type (K, V) to produce key-combiner
@@ -727,14 +727,18 @@ private[spark] class ExternalSorter[K, V, C](
    * Write all partitions to some backend that is pluggable.
    */
   def writePartitionedToExternalShuffleWriteSupport(
-      mapId: Int, shuffleId: Int, writeSupport: ShuffleWriteSupport): Array[CommittedPartition] = {
+      blockId: ShuffleBlockId,
+      writeSupport: ShuffleWriteSupport): Array[CommittedPartition] = {
 
     // Track location of each range in the output file
     val committedPartitions = new Array[CommittedPartition](numPartitions)
-    val mapOutputWriter = writeSupport.newMapOutputWriter(conf.getAppId, shuffleId, mapId)
+    val mapOutputWriter = writeSupport.newMapOutputWriter(conf.getAppId, blockId.shuffleId,
+      blockId.mapId)
     val writer = new ShufflePartitionObjectWriter(
+      blockId,
       Math.min(serializerBatchSize, Integer.MAX_VALUE).toInt,
       serInstance,
+      serializerManager,
       mapOutputWriter)
 
     try {
@@ -781,6 +785,7 @@ private[spark] class ExternalSorter[K, V, C](
       mapOutputWriter.commitAllPartitions()
     } catch {
       case e: Exception =>
+        logError("Error writing shuffle data.", e)
         util.Utils.tryLogNonFatalError {
           writer.abortCurrentPartition(e)
           mapOutputWriter.abort(e)

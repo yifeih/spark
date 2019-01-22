@@ -17,7 +17,10 @@
 
 package org.apache.spark.shuffle.api;
 
+import java.io.IOException;
+
 public interface ShuffleWriteSupport {
 
-  ShuffleMapOutputWriter newMapOutputWriter(String appId, int shuffleId, int mapId);
+  ShuffleMapOutputWriter newMapOutputWriter(String appId, int shuffleId, int mapId)
+     throws IOException;
 }
