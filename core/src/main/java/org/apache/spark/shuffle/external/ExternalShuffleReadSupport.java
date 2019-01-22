@@ -26,19 +26,16 @@ public class ExternalShuffleReadSupport implements ShuffleReadSupport {
     private final TransportContext context;
     private final boolean authEnabled;
     private final SecretKeyHolder secretKeyHolder;
-    private final MapOutputTracker mapOutputTracker;
 
     public ExternalShuffleReadSupport(
             TransportConf conf,
             TransportContext context,
             boolean authEnabled,
-            SecretKeyHolder secretKeyHolder,
-            MapOutputTracker mapOutputTracker) {
+            SecretKeyHolder secretKeyHolder) {
         this.conf = conf;
         this.context = context;
         this.authEnabled = authEnabled;
         this.secretKeyHolder = secretKeyHolder;
-        this.mapOutputTracker = mapOutputTracker;
     }
 
     @Override
@@ -48,17 +45,9 @@ public class ExternalShuffleReadSupport implements ShuffleReadSupport {
         if (authEnabled) {
             bootstraps.add(new AuthClientBootstrap(conf, appId, secretKeyHolder));
         }
-        Optional<ShuffleLocation> maybeShuffleLocation = OptionConverters.toJava(mapOutputTracker.getShuffleLocation(shuffleId, mapId, 0));
-        assert maybeShuffleLocation.isPresent();
-        ExternalShuffleLocation externalShuffleLocation = (ExternalShuffleLocation) maybeShuffleLocation.get();
-        logger.info(String.format("Found external shuffle location on node: %s:%d",
-                externalShuffleLocation.getShuffleHostname(),
-                externalShuffleLocation.getShufflePort()));
         TransportClientFactory clientFactory = context.createClientFactory(bootstraps);
         try {
             return new ExternalShufflePartitionReader(clientFactory,
-                externalShuffleLocation.getShuffleHostname(),
-                    externalShuffleLocation.getShufflePort(),
                     appId,
                     shuffleId,
                     mapId);

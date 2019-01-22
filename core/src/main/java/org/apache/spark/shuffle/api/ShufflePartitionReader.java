@@ -17,9 +17,12 @@
 
 package org.apache.spark.shuffle.api;
 
+import org.apache.spark.storage.ShuffleLocation;
+
 import java.io.InputStream;
+import java.util.Optional;
 
 public interface ShufflePartitionReader {
 
-  InputStream fetchPartition(int reduceId);
+  InputStream fetchPartition(int reduceId, Optional<ShuffleLocation> shuffleLocation);
 }
