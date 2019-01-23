@@ -19,7 +19,6 @@ package org.apache.spark.network.shuffle;
 
 import java.io.*;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.regex.Pattern;
 import java.util.*;
 import java.util.concurrent.ConcurrentMap;
@@ -94,7 +93,7 @@ public class ExternalShuffleBlockResolver {
 
   private final List<String> knownManagers = Arrays.asList(
     "org.apache.spark.shuffle.sort.SortShuffleManager",
-     "org.apache.spark.shuffle.unsafe.UnsafeShuffleManager");
+    "org.apache.spark.shuffle.unsafe.UnsafeShuffleManager");
 
   public ExternalShuffleBlockResolver(TransportConf conf, File registeredExecutorFile)
       throws IOException {
@@ -132,7 +131,6 @@ public class ExternalShuffleBlockResolver {
     } else {
       executors = Maps.newConcurrentMap();
     }
-
     this.directoryCleaner = directoryCleaner;
   }
 
@@ -180,8 +178,6 @@ public class ExternalShuffleBlockResolver {
     }
     return getSortBasedShuffleBlockData(executor, shuffleId, mapId, reduceId);
   }
-
-
 
   /**
    * Removes our metadata of all executors registered for the given application, and optionally

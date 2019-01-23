@@ -8,7 +8,6 @@ import org.apache.spark.storage.ShuffleLocation;
 import org.apache.spark.util.ByteBufferInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import scala.compat.java8.OptionConverters;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
@@ -39,8 +38,10 @@ public class ExternalShufflePartitionReader implements ShufflePartitionReader {
 
     @Override
     public InputStream fetchPartition(int reduceId, Optional<ShuffleLocation> shuffleLocation) {
-        assert shuffleLocation.isPresent() && shuffleLocation.get() instanceof ExternalShuffleLocation;
-        ExternalShuffleLocation externalShuffleLocation = (ExternalShuffleLocation) shuffleLocation.get();
+        assert shuffleLocation.isPresent() &&
+               shuffleLocation.get() instanceof ExternalShuffleLocation;
+        ExternalShuffleLocation externalShuffleLocation =
+            (ExternalShuffleLocation) shuffleLocation.get();
         logger.info(String.format("Found external shuffle location on node: %s:%d",
                 externalShuffleLocation.getShuffleHostname(),
                 externalShuffleLocation.getShufflePort()));

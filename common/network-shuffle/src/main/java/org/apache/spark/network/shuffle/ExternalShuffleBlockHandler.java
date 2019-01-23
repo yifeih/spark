@@ -198,10 +198,6 @@ public class ExternalShuffleBlockHandler extends RpcHandler {
     private final Timer registerExecutorRequestLatencyMillis = new Timer();
     // Block transfer rate in byte per second
     private final Meter blockTransferRateBytes = new Meter();
-    // Partition upload latency in ms
-    private final Timer uploadPartitionkStreamMillis = new Timer();
-    // Partition read latency in ms
-    private final Timer openPartitionMillis = new Timer();
 
     private ShuffleMetrics() {
       allMetrics = new HashMap<>();
@@ -210,8 +206,6 @@ public class ExternalShuffleBlockHandler extends RpcHandler {
       allMetrics.put("blockTransferRateBytes", blockTransferRateBytes);
       allMetrics.put("registeredExecutorsSize",
                      (Gauge<Integer>) () -> blockManager.getRegisteredExecutorsSize());
-      allMetrics.put("uploadPartitionkStreamMillis", uploadPartitionkStreamMillis);
-      allMetrics.put("openPartitionMillis", openPartitionMillis);
     }
 
     @Override

@@ -92,6 +92,7 @@ class KubernetesShuffleServiceAddressProvider(
     }
   }
 
+  // TODO: Re-register with found shuffle service instances
   private def pollForPods(): Unit = {
     val writeLock = podsUpdateLock.writeLock()
     writeLock.lock()

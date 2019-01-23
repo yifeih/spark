@@ -8,14 +8,12 @@ import org.apache.spark.network.client.TransportClientFactory;
 import org.apache.spark.network.shuffle.protocol.UploadShufflePartitionStream;
 import org.apache.spark.shuffle.api.CommittedPartition;
 import org.apache.spark.shuffle.api.ShufflePartitionWriter;
-import org.apache.spark.storage.ShuffleLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.Optional;
 
 public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
 
@@ -31,7 +29,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
     private final int partitionId;
 
     private long totalLength = 0;
-    private final ByteArrayOutputStream partitionBuffer = new ByteArrayOutputStream();
+    private ByteArrayOutputStream partitionBuffer;
 
     public ExternalShufflePartitionWriter(
             TransportClientFactory clientFactory,
@@ -48,6 +46,8 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
         this.shuffleId = shuffleId;
         this.mapId = mapId;
         this.partitionId = partitionId;
+        // TODO: Set buffer size
+        this.partitionBuffer = new ByteArrayOutputStream();
     }
 
     @Override
@@ -84,6 +84,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
             logger.info("Size: " + size);
         } catch (Exception e) {
             if (client != null) {
+                partitionBuffer = null;
                 client.close();
             }
             logger.error("Encountered error while attempting to upload partition to ESS", e);
@@ -91,13 +92,15 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
         } finally {
             logger.info("Successfully sent partition to ESS");
         }
-        return new ExternalCommittedPartition(totalLength, new ExternalShuffleLocation(hostName, port));
+        return new ExternalCommittedPartition(
+            totalLength, new ExternalShuffleLocation(hostName, port));
     }
 
     @Override
     public void abort(Exception failureReason) {
         try {
-            this.partitionBuffer.close();
+            partitionBuffer.close();
+            partitionBuffer = null;
         } catch(IOException e) {
             logger.error("Failed to close streams after failing to upload partition", e);
         }
