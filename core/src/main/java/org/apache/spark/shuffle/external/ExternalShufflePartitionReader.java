@@ -8,7 +8,6 @@ import org.apache.spark.storage.ShuffleLocation;
 import org.apache.spark.util.ByteBufferInputStream;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import scala.compat.java8.OptionConverters;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
