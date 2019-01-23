@@ -18,7 +18,7 @@
 package org.apache.spark.storage
 
 import java.io._
-import java.lang.ref.{WeakReference, ReferenceQueue => JReferenceQueue}
+import java.lang.ref.{ReferenceQueue => JReferenceQueue, WeakReference}
 import java.nio.ByteBuffer
 import java.nio.channels.Channels
 import java.util.Collections
@@ -31,11 +31,12 @@ import scala.concurrent.duration._
 import scala.reflect.ClassTag
 import scala.util.Random
 import scala.util.control.NonFatal
+
 import com.codahale.metrics.{MetricRegistry, MetricSet}
 
 import org.apache.spark._
 import org.apache.spark.executor.DataReadMethod
-import org.apache.spark.internal.{Logging, config}
+import org.apache.spark.internal.{config, Logging}
 import org.apache.spark.memory.{MemoryManager, MemoryMode}
 import org.apache.spark.metrics.source.Source
 import org.apache.spark.network._
@@ -43,7 +44,6 @@ import org.apache.spark.network.buffer.ManagedBuffer
 import org.apache.spark.network.client.StreamCallbackWithID
 import org.apache.spark.network.netty.SparkTransportConf
 import org.apache.spark.network.shuffle._
-import org.apache.spark.network.shuffle.k8s.KubernetesExternalShuffleClient
 import org.apache.spark.network.shuffle.protocol.ExecutorShuffleInfo
 import org.apache.spark.network.util.TransportConf
 import org.apache.spark.rpc.RpcEnv
@@ -130,14 +130,8 @@ private[spark] class BlockManager(
     numUsableCores: Int)
   extends BlockDataManager with BlockEvictionHandler with Logging {
 
-  private[spark] val externalNonK8sShuffleService =
-    conf.get(config.SHUFFLE_SERVICE_ENABLED)
-
-  private[spark] val externalk8sShuffleServiceEnabled =
-    conf.get(config.K8S_SHUFFLE_SERVICE_ENABLED)
-
   private[spark] val externalShuffleServiceEnabled =
-    externalNonK8sShuffleService || externalk8sShuffleServiceEnabled
+    conf.get(config.SHUFFLE_SERVICE_ENABLED)
 
   private val remoteReadNioBufferConversion =
     conf.getBoolean("spark.network.remoteReadNioBufferConversion", false)
@@ -183,9 +177,6 @@ private[spark] class BlockManager(
     }
   }
 
-  private var remoteShuffleServiceAddress: List[(String, Int)] = List()
-  private var randomShuffleServiceAddress: (String, Int) = null
-
   var blockManagerId: BlockManagerId = _
 
   // Address of the server that serves this executor's shuffle files. This is either an external
@@ -194,11 +185,7 @@ private[spark] class BlockManager(
 
   // Client to read other executors' shuffle files. This is either an external service, or just the
   // standard BlockTransferService to directly connect to other Executors.
-  private[spark] val shuffleClient = if (externalk8sShuffleServiceEnabled) {
-    val transConf = SparkTransportConf.fromSparkConf(conf, "shuffle", numUsableCores)
-    new KubernetesExternalShuffleClient(transConf, securityManager,
-      securityManager.isAuthenticationEnabled(), conf.get(config.SHUFFLE_REGISTRATION_TIMEOUT))
-  } else if (externalNonK8sShuffleService) {
+  private[spark] val shuffleClient = if (externalShuffleServiceEnabled) {
     val transConf = SparkTransportConf.fromSparkConf(conf, "shuffle", numUsableCores)
     new ExternalShuffleClient(transConf, securityManager,
       securityManager.isAuthenticationEnabled(), conf.get(config.SHUFFLE_REGISTRATION_TIMEOUT))
@@ -266,35 +253,14 @@ private[spark] class BlockManager(
 
     blockManagerId = if (idFromMaster != null) idFromMaster else id
 
-    if (externalk8sShuffleServiceEnabled) {
-      remoteShuffleServiceAddress = mapOutputTracker
-        .trackerEndpoint
-        .askSync[List[(String, Int)]](GetRemoteShuffleServiceAddresses)
-    }
-
-    shuffleServerId = if (externalk8sShuffleServiceEnabled) {
-      // TODO: Investigate better methods of load balancing
-      // note: might break if re-initialized
-      randomShuffleServiceAddress = remoteShuffleServiceAddress.head
-      BlockManagerId(executorId, randomShuffleServiceAddress._1, randomShuffleServiceAddress._2)
-    } else if (externalNonK8sShuffleService) {
+    shuffleServerId = if (externalShuffleServiceEnabled) {
       logInfo(s"external shuffle service port = $externalShuffleServicePort")
       BlockManagerId(executorId, blockTransferService.hostName, externalShuffleServicePort)
     } else {
       blockManagerId
     }
 
-    if (externalk8sShuffleServiceEnabled && blockManagerId.isDriver) {
-      // Register Drivers' configuration with the k8s shuffle services
-      remoteShuffleServiceAddress.foreach { ssId =>
-        shuffleClient.asInstanceOf[KubernetesExternalShuffleClient]
-          .registerDriverWithShuffleService(
-            ssId._1, ssId._2,
-            conf.getTimeAsMs("spark.storage.blockManagerSlaveTimeoutMs",
-              s"${conf.getTimeAsSeconds("spark.network.timeout", "120s")}s"),
-            conf.get(config.EXECUTOR_HEARTBEAT_INTERVAL))
-      }
-    } else if (externalNonK8sShuffleService && !blockManagerId.isDriver) {
+    if (externalShuffleServiceEnabled && !blockManagerId.isDriver) {
       // Register Executors' configuration with the local shuffle service, if one should exist.
       registerWithExternalShuffleServer()
     }
@@ -360,9 +326,6 @@ private[spark] class BlockManager(
       }
     }
   }
-
-  private[spark] def getRandomShuffleHost: String = randomShuffleServiceAddress._1
-  private[spark] def getRandomShufflePort: Int = randomShuffleServiceAddress._2
 
   /**
    * Re-register with the master and report all blocks to it. This will be called by the heart beat
@@ -1701,7 +1664,7 @@ private[spark] object BlockManager {
     blockManagers.toMap
   }
 
-  private class ShuffleMetricsSource(
+  class ShuffleMetricsSource(
       override val sourceName: String,
       metricSet: MetricSet) extends Source {
 

@@ -92,6 +92,7 @@ class KubernetesShuffleServiceAddressProvider(
     }
   }
 
+  // TODO: Re-register with found shuffle service instances
   private def pollForPods(): Unit = {
     val writeLock = podsUpdateLock.writeLock()
     writeLock.lock()
@@ -138,11 +139,5 @@ class KubernetesShuffleServiceAddressProvider(
     }
 
     override def onClose(e: KubernetesClientException): Unit = {}
-  }
-
-  private implicit def toRunnable(func: () => Unit): Runnable = {
-    new Runnable {
-      override def run(): Unit = func()
-    }
   }
 }

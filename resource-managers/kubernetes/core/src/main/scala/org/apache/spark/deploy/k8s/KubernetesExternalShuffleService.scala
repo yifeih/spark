@@ -282,6 +282,7 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
     allMetrics.put("openBlockRequestLatencyMillis", _openBlockRequestLatencyMillis)
     allMetrics.put("registerDriverRequestLatencyMillis", _registerDriverRequestLatencyMillis)
     allMetrics.put("blockTransferRateBytes", _blockTransferRateBytes)
+
     override def getMetrics: util.Map[String, Metric] = allMetrics
   }
 
@@ -297,10 +298,10 @@ private[spark] class KubernetesExternalShuffleService(
   extends ExternalShuffleService(conf, securityManager) {
 
   protected override def newShuffleBlockHandler(
-      conf: TransportConf): ExternalShuffleBlockHandler = {
-    val cleanerIntervals = this.conf.get(KUBERNETES_REMOTE_SHUFFLE_SERVICE_CLEANUP_INTERVAL)
-    val indexCacheSize = this.conf.get("spark.shuffle.service.index.cache.size", "100m")
-    new KubernetesExternalShuffleBlockHandler(conf, cleanerIntervals, indexCacheSize)
+      transportConf: TransportConf): ExternalShuffleBlockHandler = {
+    val cleanerIntervals = conf.get(KUBERNETES_REMOTE_SHUFFLE_SERVICE_CLEANUP_INTERVAL)
+    val indexCacheSize = conf.get("spark.shuffle.service.index.cache.size", "100m")
+    new KubernetesExternalShuffleBlockHandler(transportConf, cleanerIntervals, indexCacheSize)
   }
 }
 

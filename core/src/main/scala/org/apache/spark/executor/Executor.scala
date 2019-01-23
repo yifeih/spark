@@ -118,7 +118,7 @@ private[spark] class Executor(
     env.blockManager.initialize(conf.getAppId)
     env.metricsSystem.registerSource(executorSource)
     env.metricsSystem.registerSource(env.blockManager.shuffleMetricsSource)
-    // Initialize the ShuffleDataIo
+    // Initialize the ShuffleDataIO
     env.shuffleDataIO.foreach(_.initialize())
   }
 

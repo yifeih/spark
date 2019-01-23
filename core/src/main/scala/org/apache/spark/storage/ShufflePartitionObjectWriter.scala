@@ -19,7 +19,7 @@ package org.apache.spark.storage
 
 import java.nio.ByteBuffer
 
-import org.apache.spark.serializer.{SerializationStream, SerializerInstance}
+import org.apache.spark.serializer.{SerializationStream, SerializerInstance, SerializerManager}
 import org.apache.spark.shuffle.ShufflePartitionWriterOutputStream
 import org.apache.spark.shuffle.api.{CommittedPartition, ShuffleMapOutputWriter, ShufflePartitionWriter}
 
@@ -30,10 +30,12 @@ import org.apache.spark.shuffle.api.{CommittedPartition, ShuffleMapOutputWriter,
  *   left to the implementation of the underlying implementation of the writer plugin.
  */
 private[spark] class ShufflePartitionObjectWriter(
+    blockId: ShuffleBlockId,
     bufferSize: Int,
     serializerInstance: SerializerInstance,
+    serializerManager: SerializerManager,
     mapOutputWriter: ShuffleMapOutputWriter)
-    extends PairsWriter {
+  extends PairsWriter {
 
   // Reused buffer. Experiments should be done with off-heap at some point.
   private val buffer = ByteBuffer.allocate(bufferSize)
@@ -44,10 +46,9 @@ private[spark] class ShufflePartitionObjectWriter(
   def startNewPartition(partitionId: Int): Unit = {
     require(buffer.position() == 0,
       "Buffer was not flushed to the underlying output on the previous partition.")
-    buffer.reset()
     currentWriter = mapOutputWriter.newPartitionWriter(partitionId)
     val currentWriterStream = new ShufflePartitionWriterOutputStream(
-      currentWriter, buffer, bufferSize)
+      blockId, currentWriter, buffer, serializerManager)
     objectOutputStream = serializerInstance.serializeStream(currentWriterStream)
   }
 
@@ -56,7 +57,7 @@ private[spark] class ShufflePartitionObjectWriter(
     require(currentWriter != null, "Cannot commit a partition that has not been started.")
     objectOutputStream.close()
     val committedPartition = currentWriter.commitPartition()
-    buffer.reset()
+    buffer.clear()
     currentWriter = null
     objectOutputStream = null
     committedPartition

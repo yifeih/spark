@@ -4,12 +4,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.nio.channels.Channels;
+import java.nio.channels.FileChannel;
 import java.nio.channels.WritableByteChannel;
+import java.nio.file.StandardOpenOption;
 
 import org.apache.spark.network.client.StreamCallbackWithID;
 
@@ -23,7 +22,7 @@ public class FileWriterStreamCallback implements StreamCallbackWithID {
 
     private final String typeString;
 
-      FileType(String typeString) {
+    FileType(String typeString) {
       this.typeString = typeString;
     }
 
@@ -55,13 +54,13 @@ public class FileWriterStreamCallback implements StreamCallbackWithID {
 
   public void open() {
     logger.info(
-        "Opening {} for remote writing. File type: {}", file.getAbsolutePath(), fileType);
+      "Opening {} for remote writing. File type: {}", file.getAbsolutePath(), fileType);
     if (fileOutputChannel != null) {
       throw new IllegalStateException(
-          String.format(
-              "File %s for is already open for writing (type: %s).",
-              file.getAbsolutePath(),
-              fileType));
+        String.format(
+          "File %s for is already open for writing (type: %s).",
+          file.getAbsolutePath(),
+          fileType));
     }
     if (!file.exists()) {
       try {
@@ -88,8 +87,8 @@ public class FileWriterStreamCallback implements StreamCallbackWithID {
     }
     try {
       // TODO encryption
-      fileOutputChannel = Channels.newChannel(new FileOutputStream(file));
-    } catch (FileNotFoundException e) {
+      fileOutputChannel = FileChannel.open(file.toPath(), StandardOpenOption.APPEND);
+    } catch (IOException e) {
       throw new RuntimeException(
           String.format(
               "Failed to find file for writing at %s (type: %s).",
@@ -102,10 +101,10 @@ public class FileWriterStreamCallback implements StreamCallbackWithID {
   @Override
   public String getID() {
     return String.format("%s-%d-%d-%s",
-        appId,
-        shuffleId,
-        mapId,
-        fileType);
+      appId,
+      shuffleId,
+      mapId,
+      fileType);
   }
 
   @Override
@@ -119,23 +118,23 @@ public class FileWriterStreamCallback implements StreamCallbackWithID {
   @Override
   public void onComplete(String streamId) throws IOException {
     logger.info(
-            "Finished writing {}. File type: {}", file.getAbsolutePath(), fileType);
+      "Finished writing {}. File type: {}", file.getAbsolutePath(), fileType);
     fileOutputChannel.close();
   }
 
   @Override
   public void onFailure(String streamId, Throwable cause) throws IOException {
     logger.warn("Failed to write shuffle file at {} (type: %s).",
-        file.getAbsolutePath(),
-        fileType,
-        cause);
+      file.getAbsolutePath(),
+      fileType,
+      cause);
     fileOutputChannel.close();
     // TODO delete parent dirs too
     if (!file.delete()) {
       logger.warn(
-          "Failed to delete incomplete remote shuffle file at %s (type: %s)",
-          file.getAbsolutePath(),
-          fileType);
+        "Failed to delete incomplete remote shuffle file at %s (type: %s)",
+        file.getAbsolutePath(),
+        fileType);
     }
   }
 
@@ -143,9 +142,9 @@ public class FileWriterStreamCallback implements StreamCallbackWithID {
     if (fileOutputChannel == null) {
       throw new RuntimeException(
           String.format(
-              "Shuffle file at %s not open for writing (type: %s).",
-              file.getAbsolutePath(),
-              fileType));
+            "Shuffle file at %s not open for writing (type: %s).",
+            file.getAbsolutePath(),
+            fileType));
     }
   }
 }

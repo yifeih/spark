@@ -1,7 +1,6 @@
 package org.apache.spark.shuffle.external;
 
 import com.google.common.collect.Lists;
-import org.apache.spark.MapOutputTracker;
 import org.apache.spark.network.TransportContext;
 import org.apache.spark.network.client.TransportClientBootstrap;
 import org.apache.spark.network.client.TransportClientFactory;
@@ -10,13 +9,10 @@ import org.apache.spark.network.sasl.SecretKeyHolder;
 import org.apache.spark.network.util.TransportConf;
 import org.apache.spark.shuffle.api.ShufflePartitionReader;
 import org.apache.spark.shuffle.api.ShuffleReadSupport;
-import org.apache.spark.storage.ShuffleLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import scala.compat.java8.OptionConverters;
 
 import java.util.List;
-import java.util.Optional;
 
 public class ExternalShuffleReadSupport implements ShuffleReadSupport {
 

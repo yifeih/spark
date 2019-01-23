@@ -20,38 +20,36 @@ package org.apache.spark.shuffle
 import java.io.{InputStream, OutputStream}
 import java.nio.ByteBuffer
 
-import org.apache.spark.network.util.LimitedInputStream
+import org.apache.spark.serializer.SerializerManager
 import org.apache.spark.shuffle.api.ShufflePartitionWriter
+import org.apache.spark.storage.ShuffleBlockId
 import org.apache.spark.util.{ByteBufferInputStream, Utils}
 
 class ShufflePartitionWriterOutputStream(
-    partitionWriter: ShufflePartitionWriter, buffer: ByteBuffer, bufferSize: Int)
-    extends OutputStream {
+    blockId: ShuffleBlockId,
+    partitionWriter: ShufflePartitionWriter,
+    buffer: ByteBuffer,
+    serializerManager: SerializerManager)
+  extends OutputStream {
 
-  private var currentChunkSize = 0
-  private val bufferForRead = buffer.asReadOnlyBuffer()
   private var underlyingOutputStream: OutputStream = _
 
   override def write(b: Int): Unit = {
-    buffer.putInt(b)
-    currentChunkSize += 1
-    if (currentChunkSize == bufferSize) {
+    buffer.put(b.asInstanceOf[Byte])
+    if (buffer.remaining() == 0) {
       pushBufferedBytesToUnderlyingOutput()
     }
   }
 
   private def pushBufferedBytesToUnderlyingOutput(): Unit = {
-    bufferForRead.reset()
-    var bufferInputStream: InputStream = new ByteBufferInputStream(bufferForRead)
-    if (currentChunkSize < bufferSize) {
-      bufferInputStream = new LimitedInputStream(bufferInputStream, currentChunkSize)
-    }
+    buffer.flip()
+    var bufferInputStream: InputStream = new ByteBufferInputStream(buffer)
     if (underlyingOutputStream == null) {
-      underlyingOutputStream = partitionWriter.openPartitionStream()
+      underlyingOutputStream = serializerManager.wrapStream(blockId,
+        partitionWriter.openPartitionStream())
     }
     Utils.copyStream(bufferInputStream, underlyingOutputStream, false, false)
-    buffer.reset()
-    currentChunkSize = 0
+    buffer.clear()
   }
 
   override def flush(): Unit = {

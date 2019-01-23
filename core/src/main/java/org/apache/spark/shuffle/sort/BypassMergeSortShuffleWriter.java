@@ -46,7 +46,6 @@ import scala.collection.Iterator;
 import javax.annotation.Nullable;
 import java.io.*;
 import java.util.Arrays;
-import java.util.stream.Collectors;
 
 /**
  * This class implements sort-based shuffle's hash-style shuffle fallback path. This write path
@@ -171,6 +170,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       try {
         committedPartitions = combineAndWritePartitions(tmp);
         logger.info("Successfully wrote partitions without shuffle");
+        // TODO: Investigate when commitedPartitions is null or returns empty
         shuffleBlockResolver.writeIndexFileAndCommit(shuffleId,
                 mapId,
                 Arrays.stream(committedPartitions).mapToLong(p -> p.length()).toArray(),
@@ -213,7 +213,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           boolean copyThrewException = true;
           try {
             partitions[i] =
-                    new LocalCommittedPartition(Utils.copyStream(in, out, false, transferToEnabled));
+              new LocalCommittedPartition(Utils.copyStream(in, out, false, transferToEnabled));
             copyThrewException = false;
           } finally {
             Closeables.close(in, copyThrewException);

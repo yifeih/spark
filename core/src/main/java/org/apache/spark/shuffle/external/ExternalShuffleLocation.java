@@ -1,7 +1,5 @@
 package org.apache.spark.shuffle.external;
 
-import org.apache.hadoop.mapreduce.task.reduce.Shuffle;
-import org.apache.spark.network.protocol.Encoders;
 import org.apache.spark.storage.ShuffleLocation;
 
 import java.io.*;

@@ -22,7 +22,6 @@ import java.util.concurrent.{ConcurrentHashMap, LinkedBlockingQueue, ThreadPoolE
 import java.util.zip.{GZIPInputStream, GZIPOutputStream}
 
 import scala.collection.JavaConverters._
-import scala.collection.mutable
 import scala.collection.mutable.{HashMap, HashSet, ListBuffer, Map}
 import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.Duration
@@ -237,7 +236,7 @@ private[spark] class MapOutputTrackerMasterEndpoint(
       stop()
 
     case GetRemoteShuffleServiceAddresses =>
-      context.reply(tracker.getRemoteShuffleServiceAddresses)
+      context.reply(tracker.getRemoteShuffleServiceAddress())
   }
 }
 
@@ -304,6 +303,8 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
       : Iterator[(BlockManagerId, Seq[(BlockId, Long)])]
 
   def getShuffleLocation(shuffleId: Int, mapId: Int, reduceId: Int) : Option[ShuffleLocation]
+
+  def getRemoteShuffleServiceAddress(): java.util.List[(String, Integer)]
 
   /**
    * Deletes map output status information for the specified shuffle stage.
@@ -653,8 +654,9 @@ private[spark] class MapOutputTrackerMaster(
     }
   }
 
-  def getRemoteShuffleServiceAddresses: List[(String, Int)] =
-    shuffleServiceAddressProvider.getShuffleServiceAddresses()
+  override def getRemoteShuffleServiceAddress(): java.util.List[(String, Integer)] =
+    shuffleServiceAddressProvider
+      .getShuffleServiceAddresses().map { case (h, p) => (h, new Integer(p))}.asJava
 
   // Get blocks sizes by executor Id. Note that zero-sized blocks are excluded in the result.
   // This method is only called in local-mode.
@@ -806,6 +808,11 @@ private[spark] class MapOutputTrackerWorker(conf: SparkConf) extends MapOutputTr
       case Some(shuffleStatus) => shuffleStatus(mapId).shuffleLocationForBlock(reduceId)
       case None => Option.empty
     }
+  }
+
+  override def getRemoteShuffleServiceAddress(): java.util.List[(String, Integer)] = {
+    trackerEndpoint
+      .askSync[java.util.List[(String, Integer)]](GetRemoteShuffleServiceAddresses)
   }
 }
 
