@@ -78,7 +78,11 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
                     appId, shuffleId, mapId, partitionId));
             logger.info("clientid: " + client.getClientId() + " " + client.isActive());
             logger.info("THE BUFFER HASH CODE IS: " + Arrays.hashCode(buf));
+
+            final long startTime = System.nanoTime();
             client.uploadStream(new NioManagedBuffer(streamHeader), managedBuffer, callback);
+            final long nanoSeconds = System.nanoTime() - startTime;
+            logger.info("METRICS: UploadStream upload time: " + nanoSeconds);
             totalLength += size;
             logger.info("Partition Length: " + totalLength);
             logger.info("Size: " + size);

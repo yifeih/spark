@@ -78,7 +78,10 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
                     "index-upload-%s-%d-%d", appId, shuffleId, mapId);
             client.setClientId(requestID);
             logger.info("clientid: " + client.getClientId() + " " + client.isActive());
+            final long startTime = System.nanoTime();
             client.sendRpcSync(uploadShuffleIndex, 60000);
+            final long nanoSeconds = System.nanoTime() - startTime;
+            logger.info("METRICS: UploadIndexParam upload time: " + nanoSeconds);
         } catch (Exception e) {
             logger.error("Encountered error while creating transport client", e);
             client.close();

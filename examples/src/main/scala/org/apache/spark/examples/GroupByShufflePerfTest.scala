@@ -21,26 +21,39 @@ package org.apache.spark.examples
 import org.apache.spark.sql.SparkSession
 
 /**
- * Usage: GroupByShuffleTest
+ * Usage: GroupByShufflePerfTest
  */
-object GroupByShuffleTest {
+object GroupByShufflePerfTest {
   def main(args: Array[String]) {
+
+    var parallelization = 1
+
+    if (args.length != 0) {
+      parallelization = args(0).toInt
+    }
+
+    println("Running GroupByShufflePerfTest")
+
     val spark = SparkSession
       .builder
       .appName("GroupByShuffle Test")
       .getOrCreate()
 
-    val words = Array("one", "two", "two", "three", "three", "three")
-    val wordPairsRDD = spark.sparkContext.parallelize(words).map(word => (word, 1))
+    spark.sparkContext.addSparkListener(new ShuffleMetricsOutputSparkListener())
 
-    val wordCountsWithGroup = wordPairsRDD
-      .groupByKey()
-      .map(t => (t._1, t._2.sum))
-      .collect()
+//    val words = Array("one", "two", "two", "three", "three", "three")
+//    val wordPairsRDD = spark.sparkContext.parallelize(words).map(word => (word, 1))
+//
+//    val wordCountsWithGroup = wordPairsRDD
+//      .groupByKey()
+//      .map(t => (t._1, t._2.sum))
+//      .collect()
+//
+//    println(wordCountsWithGroup.mkString(","))
+    val words = createArray(10000)
 
-    println(wordCountsWithGroup.mkString(","))
-
-    val wordPairsRDD2 = spark.sparkContext.parallelize(words, 1).map(word => (word, 1))
+    val wordPairsRDD2 = spark.sparkContext
+      .parallelize(words, parallelization).map(word => (word, 1))
 
     val wordCountsWithGroup2 = wordPairsRDD2
       .groupByKey()
@@ -49,8 +62,20 @@ object GroupByShuffleTest {
 
     println(wordCountsWithGroup2.mkString(","))
 
-    Thread.sleep(600000)
+//    Thread.sleep(600000)
     spark.stop()
+  }
+
+
+  def createArray(arraySize: Int) : Array[String] = {
+    val mapIntToWord: Map[Int, String] =
+      Map(0 -> "zero", 1 -> "one", 2 -> "two", 3 -> "three", 4 -> "four")
+
+    val array = new Array[String](arraySize)
+    for (i <- 1 to arraySize) {
+      array(i - 1) = mapIntToWord.getOrElse(i-1, "else")
+    }
+    array
   }
 }
 // scalastyle:on println

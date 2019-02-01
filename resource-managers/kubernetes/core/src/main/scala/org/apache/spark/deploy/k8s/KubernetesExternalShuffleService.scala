@@ -128,7 +128,8 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
           out.close()
           callback.onSuccess(ByteBuffer.allocate(0))
         } finally {
-          responseDelayContext.stop()
+          val nanoSeconds = responseDelayContext.stop()
+          logInfo("METRICS: UploadIndexParam processing time: " + nanoSeconds)
         }
 
       case OpenParam(appId, shuffleId, mapId, partitionId) =>
@@ -177,7 +178,8 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
           getFileWriterStreamCallback(
             appId, shuffleId, mapId, "data", FileWriterStreamCallback.FileType.DATA)
         } finally {
-          responseDelayContext.stop()
+          val nanoSeconds = responseDelayContext.stop()
+          logInfo("METRICS: OpenStream processing time: " + nanoSeconds)
         }
       case _ =>
         super.handleStream(header, client, callback)

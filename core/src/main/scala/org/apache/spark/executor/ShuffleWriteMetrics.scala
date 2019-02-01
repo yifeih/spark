@@ -32,6 +32,8 @@ class ShuffleWriteMetrics private[spark] () extends ShuffleWriteMetricsReporter 
   private[executor] val _bytesWritten = new LongAccumulator
   private[executor] val _recordsWritten = new LongAccumulator
   private[executor] val _writeTime = new LongAccumulator
+  private[executor] val _fileWriteTime = new LongAccumulator
+  private[executor] val _numFilesWritten = new LongAccumulator
 
   /**
    * Number of bytes written for the shuffle by this task.
@@ -48,9 +50,21 @@ class ShuffleWriteMetrics private[spark] () extends ShuffleWriteMetricsReporter 
    */
   def writeTime: Long = _writeTime.sum
 
+  /**
+    * Time it takes to write a single partition block file.
+    */
+  def fileWriteTime: Long = _fileWriteTime.sum
+
+  /**
+    * Number of files written.
+    */
+  def numFilesWritten: Long = _numFilesWritten.sum
+
   private[spark] override def incBytesWritten(v: Long): Unit = _bytesWritten.add(v)
   private[spark] override def incRecordsWritten(v: Long): Unit = _recordsWritten.add(v)
   private[spark] override def incWriteTime(v: Long): Unit = _writeTime.add(v)
+  private[spark] override def incFileWriteTime(v: Long): Unit = _fileWriteTime.add(v)
+  private[spark] override def incNumFilesWritten(): Unit = _numFilesWritten.add(1)
   private[spark] override def decBytesWritten(v: Long): Unit = {
     _bytesWritten.setValue(bytesWritten - v)
   }

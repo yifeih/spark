@@ -254,7 +254,10 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
             try (OutputStream out = writer.openPartitionStream()) {
               Utils.copyStream(in, out, false, false);
             }
+            final long fileWriteStartTime = System.nanoTime();
             partitions[i] = writer.commitPartition();
+            writeMetrics.incNumFilesWritten();
+            writeMetrics.incFileWriteTime(System.nanoTime() - fileWriteStartTime);
             copyThrewException = false;
           } catch (Exception e) {
             try {
