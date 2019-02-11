@@ -176,7 +176,7 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
               }
             })
           getFileWriterStreamCallback(
-            appId, shuffleId, mapId, "data", FileWriterStreamCallback.FileType.DATA)
+            appId, shuffleId, mapId, "data", FileWriterStreamCallback.FileType.DATA, callback)
         } finally {
           val nanoSeconds = responseDelayContext.stop()
           logInfo("METRICS: OpenStream processing time: " + nanoSeconds)
@@ -193,10 +193,11 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
       shuffleId: Int,
       mapId: Int,
       extension: String,
-      fileType: FileWriterStreamCallback.FileType): StreamCallbackWithID = {
+      fileType: FileWriterStreamCallback.FileType,
+      callback: RpcResponseCallback): StreamCallbackWithID = {
     val file = getFile(appId, shuffleId, mapId, extension)
     val streamCallback =
-      new FileWriterStreamCallback(appId, shuffleId, mapId, file, fileType)
+      new FileWriterStreamCallback(appId, shuffleId, mapId, file, fileType, callback)
     streamCallback.open()
     streamCallback
   }

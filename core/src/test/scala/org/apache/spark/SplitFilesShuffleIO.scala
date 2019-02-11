@@ -20,8 +20,10 @@ package org.apache.spark
 import java.io._
 import java.nio.file.Paths
 import java.util.Optional
+
 import javax.ws.rs.core.UriBuilder
 
+import org.apache.spark.shuffle.ShuffleWriteMetricsReporter
 import org.apache.spark.shuffle.api._
 import org.apache.spark.storage.ShuffleLocation
 import org.apache.spark.util.Utils
@@ -39,7 +41,8 @@ class SplitFilesShuffleIO(conf: SparkConf) extends ShuffleDataIO {
   }
 
   override def writeSupport(): ShuffleWriteSupport = {
-    (appId: String, shuffleId: Int, mapId: Int) => new ShuffleMapOutputWriter {
+    (appId: String, shuffleId: Int, mapId: Int,
+     metrics: ShuffleWriteMetricsReporter) => new ShuffleMapOutputWriter {
       override def newPartitionWriter(partitionId: Int): ShufflePartitionWriter = {
         new ShufflePartitionWriter {
           override def openPartitionStream(): OutputStream = {

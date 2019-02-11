@@ -313,18 +313,18 @@ public class TransportClient implements Closeable {
     final Object requestId;
 
     StdChannelListener(Object requestId) {
-      this.startTime = System.currentTimeMillis();
+      this.startTime = System.nanoTime();
       this.requestId = requestId;
     }
 
     @Override
     public void operationComplete(Future<? super Void> future) throws Exception {
       if (future.isSuccess()) {
-        if (logger.isTraceEnabled()) {
-          long timeTaken = System.currentTimeMillis() - startTime;
-          logger.trace("Sending request {} to {} took {} ms", requestId,
+//        if (logger.isTraceEnabled()) {
+          long timeTaken = System.nanoTime() - startTime;
+          logger.info("Sending request {} to {} took {} ns", requestId,
               getRemoteAddress(channel), timeTaken);
-        }
+//        }
       } else {
         String errorMsg = String.format("Failed to send RPC %s to %s: %s", requestId,
             getRemoteAddress(channel), future.cause());

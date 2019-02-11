@@ -34,6 +34,11 @@ class ShuffleWriteMetrics private[spark] () extends ShuffleWriteMetricsReporter 
   private[executor] val _writeTime = new LongAccumulator
   private[executor] val _fileWriteTime = new LongAccumulator
   private[executor] val _numFilesWritten = new LongAccumulator
+  private[executor] val _indexFileWriteTime = new LongAccumulator
+  private[executor] val _streamCopyWriteTime = new LongAccumulator
+  private[executor] val _createPartitionWriterTime = new LongAccumulator
+  private[executor] val _createMapOutputWriterTime = new LongAccumulator
+  private[executor] val _streamFileWriteTime = new LongAccumulator
 
   /**
    * Number of bytes written for the shuffle by this task.
@@ -51,24 +56,49 @@ class ShuffleWriteMetrics private[spark] () extends ShuffleWriteMetricsReporter 
   def writeTime: Long = _writeTime.sum
 
   /**
-    * Time it takes to write a single partition block file.
-    */
+   * Time it takes to write the file partition files.
+   */
   def fileWriteTime: Long = _fileWriteTime.sum
 
   /**
-    * Number of files written.
-    */
+   * Number of files written.
+   */
   def numFilesWritten: Long = _numFilesWritten.sum
+
+  /**
+   * Time it takes to write the index file.
+   */
+  def indexFileWriteTime: Long = _indexFileWriteTime.sum
+
+  /**
+   * Time it takes to stream data.
+   */
+  def streamCopyWriteTime: Long = _streamCopyWriteTime.sum
+
+  def createPartitionWriterTime: Long = _createPartitionWriterTime.sum
+
+  def createMapOutputWriterTime: Long = _createMapOutputWriterTime.sum
+
+  def streamFileWriteTime: Long = _streamFileWriteTime.sum
 
   private[spark] override def incBytesWritten(v: Long): Unit = _bytesWritten.add(v)
   private[spark] override def incRecordsWritten(v: Long): Unit = _recordsWritten.add(v)
   private[spark] override def incWriteTime(v: Long): Unit = _writeTime.add(v)
   private[spark] override def incFileWriteTime(v: Long): Unit = _fileWriteTime.add(v)
   private[spark] override def incNumFilesWritten(): Unit = _numFilesWritten.add(1)
+  private[spark] override def incIndexFileWriteTime(v: Long): Unit = _indexFileWriteTime.add(v)
+  private[spark] override def incStreamCopyWriteTime(v: Long): Unit = _streamCopyWriteTime.add(v)
+  override private[spark] def incCreatePartitionWriterTime(v: Long): Unit =
+    _createPartitionWriterTime.add(v)
   private[spark] override def decBytesWritten(v: Long): Unit = {
     _bytesWritten.setValue(bytesWritten - v)
   }
   private[spark] override def decRecordsWritten(v: Long): Unit = {
     _recordsWritten.setValue(recordsWritten - v)
   }
+
+  override private[spark] def incCreateMapOutputWriterTime(v: Long): Unit =
+    _createMapOutputWriterTime.add(v)
+
+  override private[spark] def incStreamFileWriteTime(v: Long): Unit = _streamFileWriteTime.add(v)
 }

@@ -23,10 +23,8 @@ import java.nio.channels.FileChannel;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import org.apache.spark.shuffle.api.CommittedPartition;
-import org.apache.spark.storage.ShuffleLocation;
 import scala.Option;
 import scala.Product2;
 import scala.collection.JavaConverters;
@@ -339,14 +337,17 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           // that doesn't need to interpret the spilled bytes.
           if (transferToEnabled && !encryptionEnabled) {
             logger.debug("Using transferTo-based fast merge");
-            committedPartitions = toLocalCommittedPartition(mergeSpillsWithTransferTo(spills, outputFile));
+            committedPartitions = toLocalCommittedPartition(
+                    mergeSpillsWithTransferTo(spills, outputFile));
           } else {
             logger.debug("Using fileStream-based fast merge");
-            committedPartitions = toLocalCommittedPartition(mergeSpillsWithFileStream(spills, outputFile, null));
+            committedPartitions = toLocalCommittedPartition(
+                    mergeSpillsWithFileStream(spills, outputFile, null));
           }
         } else {
           logger.debug("Using slow merge");
-          committedPartitions = toLocalCommittedPartition(mergeSpillsWithFileStream(spills, outputFile, compressionCodec));
+          committedPartitions = toLocalCommittedPartition(
+                  mergeSpillsWithFileStream(spills, outputFile, compressionCodec));
         }
         // When closing an UnsafeShuffleExternalSorter that has already spilled once but also has
         // in-memory records, we write out the in-memory records to a file but do not count that
@@ -537,7 +538,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
 
     boolean threwException = true;
     ShuffleMapOutputWriter mapOutputWriter = pluggableWriteSupport.newMapOutputWriter(
-        sparkConf.getAppId(), shuffleId, mapId);
+        sparkConf.getAppId(), shuffleId, mapId, writeMetrics);
     try {
       for (int i = 0; i < spills.length; i++) {
         spillInputStreams[i] = new NioBufferedFileInputStream(
@@ -607,7 +608,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
             spillInfo.file,
             inputBufferSizeInBytes);
     ShuffleMapOutputWriter mapOutputWriter = pluggableWriteSupport.newMapOutputWriter(
-        sparkConf.getAppId(), shuffleId, mapId);
+        sparkConf.getAppId(), shuffleId, mapId, writeMetrics);
     try {
       for (int partition = 0; partition < numPartitions; partition++) {
         ShufflePartitionWriter writer = mapOutputWriter.newPartitionWriter(partition);

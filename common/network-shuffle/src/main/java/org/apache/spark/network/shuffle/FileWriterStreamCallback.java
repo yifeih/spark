@@ -1,5 +1,6 @@
 package org.apache.spark.network.shuffle;
 
+import org.apache.spark.network.client.RpcResponseCallback;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,21 +40,27 @@ public class FileWriterStreamCallback implements StreamCallbackWithID {
   private final File file;
   private final FileType fileType;
   private WritableByteChannel fileOutputChannel = null;
+  private long startTime;
+  private final RpcResponseCallback callback;
 
   public FileWriterStreamCallback(
-      String appId,
-      int shuffleId,
-      int mapId,
-      File file,
-      FileWriterStreamCallback.FileType fileType) {
+    String appId,
+    int shuffleId,
+    int mapId,
+    File file,
+    FileWriterStreamCallback.FileType fileType,
+    RpcResponseCallback callback) {
     this.appId = appId;
     this.shuffleId = shuffleId;
     this.mapId = mapId;
     this.file = file;
     this.fileType = fileType;
+    this.startTime = 0;
+    this.callback = callback;
   }
 
   public void open() {
+    this.startTime = System.nanoTime();
     logger.info(
         "Opening {} for remote writing. File type: {}", file.getAbsolutePath(), fileType);
     if (fileOutputChannel != null) {
@@ -118,9 +125,13 @@ public class FileWriterStreamCallback implements StreamCallbackWithID {
 
   @Override
   public void onComplete(String streamId) throws IOException {
+    if (startTime != 0) {
+      logger.info("METRICS: Writing file " + file.getName() + " took " + (System.nanoTime() - startTime));
+    }
     logger.info(
             "Finished writing {}. File type: {}", file.getAbsolutePath(), fileType);
     fileOutputChannel.close();
+    callback.onSuccess(ByteBuffer.allocate(0));
   }
 
   @Override

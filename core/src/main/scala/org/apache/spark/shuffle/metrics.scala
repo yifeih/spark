@@ -50,5 +50,10 @@ private[spark] trait ShuffleWriteMetricsReporter {
   private[spark] def decBytesWritten(v: Long): Unit
   private[spark] def decRecordsWritten(v: Long): Unit
   private[spark] def incFileWriteTime(v: Long): Unit
+  private[spark] def incIndexFileWriteTime(v: Long): Unit
+  private[spark] def incStreamCopyWriteTime(v: Long): Unit
   private[spark] def incNumFilesWritten(): Unit
+  private[spark] def incCreatePartitionWriterTime(v: Long): Unit
+  private[spark] def incCreateMapOutputWriterTime(v: Long): Unit
+  private[spark] def incStreamFileWriteTime(v: Long): Unit
 }

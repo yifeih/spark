@@ -23,6 +23,7 @@ import java.nio.file.Files;
 import java.nio.file.StandardOpenOption;
 import java.util.*;
 
+import org.apache.spark.shuffle.ShuffleWriteMetricsReporter;
 import org.apache.spark.shuffle.api.CommittedPartition;
 import scala.Option;
 import scala.Product2;
@@ -646,7 +647,7 @@ public class UnsafeShuffleWriterSuite {
 
     @Override
     public ShuffleMapOutputWriter newMapOutputWriter(
-            String appId, int shuffleId, int mapId) {
+            String appId, int shuffleId, int mapId, ShuffleWriteMetricsReporter metrics) {
       try {
         if (!mergedOutputFile.exists() && !mergedOutputFile.createNewFile()) {
           throw new IllegalStateException(

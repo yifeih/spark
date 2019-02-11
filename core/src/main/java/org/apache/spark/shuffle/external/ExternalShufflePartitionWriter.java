@@ -6,16 +6,15 @@ import org.apache.spark.network.client.RpcResponseCallback;
 import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.client.TransportClientFactory;
 import org.apache.spark.network.shuffle.protocol.UploadShufflePartitionStream;
+import org.apache.spark.shuffle.ShuffleWriteMetricsReporter;
 import org.apache.spark.shuffle.api.CommittedPartition;
 import org.apache.spark.shuffle.api.ShufflePartitionWriter;
-import org.apache.spark.storage.ShuffleLocation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
-import java.util.Optional;
 
 public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
 
@@ -29,6 +28,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
     private final int shuffleId;
     private final int mapId;
     private final int partitionId;
+    private final ShuffleWriteMetricsReporter writeMetrics;
 
     private long totalLength = 0;
     private final ByteArrayOutputStream partitionBuffer = new ByteArrayOutputStream();
@@ -40,7 +40,8 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
             String appId,
             int shuffleId,
             int mapId,
-            int partitionId) {
+            int partitionId,
+            ShuffleWriteMetricsReporter writeMetrics) {
         this.clientFactory = clientFactory;
         this.hostName = hostName;
         this.port = port;
@@ -48,6 +49,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
         this.shuffleId = shuffleId;
         this.mapId = mapId;
         this.partitionId = partitionId;
+        this.writeMetrics = writeMetrics;
     }
 
     @Override
@@ -55,17 +57,6 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
 
     @Override
     public CommittedPartition commitPartition() {
-        RpcResponseCallback callback = new RpcResponseCallback() {
-            @Override
-            public void onSuccess(ByteBuffer response) {
-                logger.info("Successfully uploaded partition");
-            }
-
-            @Override
-            public void onFailure(Throwable e) {
-                logger.error("Encountered an error uploading partition", e);
-            }
-        };
         TransportClient client = null;
         try {
             byte[] buf = partitionBuffer.toByteArray();
@@ -80,6 +71,19 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
             logger.info("THE BUFFER HASH CODE IS: " + Arrays.hashCode(buf));
 
             final long startTime = System.nanoTime();
+            RpcResponseCallback callback = new RpcResponseCallback() {
+                @Override
+                public void onSuccess(ByteBuffer response) {
+                    logger.info("Successfully uploaded partition: " + System.nanoTime());
+                    logger.info("StreamFileWriteTime: " + (System.nanoTime() - startTime));
+                    writeMetrics.incStreamFileWriteTime(System.nanoTime() - startTime);
+                }
+
+                @Override
+                public void onFailure(Throwable e) {
+                    logger.error("Encountered an error uploading partition", e);
+                }
+            };
             client.uploadStream(new NioManagedBuffer(streamHeader), managedBuffer, callback);
             final long nanoSeconds = System.nanoTime() - startTime;
             logger.info("METRICS: UploadStream upload time: " + nanoSeconds);
@@ -95,7 +99,8 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
         } finally {
             logger.info("Successfully sent partition to ESS");
         }
-        return new ExternalCommittedPartition(totalLength, new ExternalShuffleLocation(hostName, port));
+        return new ExternalCommittedPartition(totalLength,
+                new ExternalShuffleLocation(hostName, port));
     }
 
     @Override

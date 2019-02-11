@@ -1,6 +1,5 @@
 package org.apache.spark.shuffle.external;
 
-import org.apache.spark.MapOutputTracker;
 import org.apache.spark.SparkConf;
 import org.apache.spark.SparkEnv;
 import org.apache.spark.network.TransportContext;

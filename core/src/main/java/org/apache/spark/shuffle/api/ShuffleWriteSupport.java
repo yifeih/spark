@@ -17,7 +17,10 @@
 
 package org.apache.spark.shuffle.api;
 
+import org.apache.spark.shuffle.ShuffleWriteMetricsReporter;
+
 public interface ShuffleWriteSupport {
 
-  ShuffleMapOutputWriter newMapOutputWriter(String appId, int shuffleId, int mapId);
+  ShuffleMapOutputWriter newMapOutputWriter(String appId, int shuffleId, int mapId,
+                                            ShuffleWriteMetricsReporter writeMetrics);
 }

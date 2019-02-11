@@ -18,13 +18,22 @@
 // scalastyle:off println
 package org.apache.spark.examples
 
+import java.util.logging.{Level, LogManager}
+
+import org.slf4j.{Logger, LoggerFactory}
+import scala.util.Random
+
+import org.apache.spark.network.client.TransportClient
 import org.apache.spark.sql.SparkSession
 
 /**
- * Usage: GroupByShufflePerfTest
+ * Usage: GroupByShufflePerfTest [num records]
  */
 object GroupByShufflePerfTest {
   def main(args: Array[String]) {
+
+    assert(args.length > 1)
+    var numRecords = args(1).toInt
 
     var parallelization = 1
 
@@ -50,7 +59,7 @@ object GroupByShufflePerfTest {
 //      .collect()
 //
 //    println(wordCountsWithGroup.mkString(","))
-    val words = createArray(10000)
+    val words = createArray(numRecords)
 
     val wordPairsRDD2 = spark.sparkContext
       .parallelize(words, parallelization).map(word => (word, 1))
@@ -73,7 +82,7 @@ object GroupByShufflePerfTest {
 
     val array = new Array[String](arraySize)
     for (i <- 1 to arraySize) {
-      array(i - 1) = mapIntToWord.getOrElse(i-1, "else")
+      array(i - 1) = Random.alphanumeric.take(2).mkString
     }
     array
   }

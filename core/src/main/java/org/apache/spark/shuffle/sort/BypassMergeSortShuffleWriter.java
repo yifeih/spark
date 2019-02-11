@@ -46,7 +46,6 @@ import scala.collection.Iterator;
 import javax.annotation.Nullable;
 import java.io.*;
 import java.util.Arrays;
-import java.util.stream.Collectors;
 
 /**
  * This class implements sort-based shuffle's hash-style shuffle fallback path. This write path
@@ -171,10 +170,13 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       try {
         committedPartitions = combineAndWritePartitions(tmp);
         logger.info("Successfully wrote partitions without shuffle");
+          final long fileWriteStartTime = System.nanoTime();
         shuffleBlockResolver.writeIndexFileAndCommit(shuffleId,
                 mapId,
                 Arrays.stream(committedPartitions).mapToLong(p -> p.length()).toArray(),
                 tmp);
+        writeMetrics.incIndexFileWriteTime(System.nanoTime() - fileWriteStartTime);
+        writeMetrics.incWriteTime(System.nanoTime() - fileWriteStartTime);
       } finally {
         if (tmp != null && tmp.exists() && !tmp.delete()) {
           logger.error("Error while deleting temp file {}", tmp.getAbsolutePath());
@@ -212,8 +214,16 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           final FileInputStream in = new FileInputStream(file);
           boolean copyThrewException = true;
           try {
+            final long streamCopyStartTime = System.nanoTime();
             partitions[i] =
-                    new LocalCommittedPartition(Utils.copyStream(in, out, false, transferToEnabled));
+                    new LocalCommittedPartition(
+                            Utils.copyStream(in, out, false, transferToEnabled));
+            if (transferToEnabled) {
+              logger.info("TransferTo is enabled");
+            } else {
+              logger.info("TransferTo is not enabled");
+            }
+            writeMetrics.incStreamCopyWriteTime(System.nanoTime() - streamCopyStartTime);
             copyThrewException = false;
           } finally {
             Closeables.close(in, copyThrewException);
@@ -241,23 +251,36 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     assert(pluggableWriteSupport != null);
 
     final long writeStartTime = System.nanoTime();
+    final long mapOutputWriterCreateStartTime = System.nanoTime();
+    logger.info("TIMESTAMP: writeStartTime: " + writeStartTime);
     ShuffleMapOutputWriter mapOutputWriter = pluggableWriteSupport.newMapOutputWriter(
-        appId, shuffleId, mapId);
+        appId, shuffleId, mapId, writeMetrics);
+    writeMetrics.incCreateMapOutputWriterTime(System.nanoTime() - mapOutputWriterCreateStartTime);
     try {
       for (int i = 0; i < numPartitions; i++) {
         final File file = partitionWriterSegments[i].file();
         if (file.exists()) {
           final FileInputStream in = new FileInputStream(file);
           boolean copyThrewException = true;
+          final long createPartitionWriterStartTime = System.nanoTime();
+          logger.info("TIMESTAMP: createPartitionWriterStartTime: "
+                  + createPartitionWriterStartTime);
           ShufflePartitionWriter writer = mapOutputWriter.newPartitionWriter(i);
+          writeMetrics.incCreatePartitionWriterTime(
+                  System.nanoTime() - createPartitionWriterStartTime);
           try {
             try (OutputStream out = writer.openPartitionStream()) {
+              final long streamCopyStartTime = System.nanoTime();
+              logger.info("TIMESTAMP: streamCopyStartTime: " + streamCopyStartTime);
               Utils.copyStream(in, out, false, false);
+              writeMetrics.incStreamCopyWriteTime(System.nanoTime() - streamCopyStartTime);
             }
             final long fileWriteStartTime = System.nanoTime();
+            logger.info("TIMESTAMP: fileWriteStartTime: " + fileWriteStartTime);
             partitions[i] = writer.commitPartition();
             writeMetrics.incNumFilesWritten();
             writeMetrics.incFileWriteTime(System.nanoTime() - fileWriteStartTime);
+            logger.info("TIMESTAMP: sentFileWriterRequestTime: " + System.nanoTime());
             copyThrewException = false;
           } catch (Exception e) {
             try {
@@ -273,7 +296,10 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           }
         }
       }
+      final long fileWriteStartTime = System.nanoTime();
+      logger.info("TIMESTAMP: indexFileWriteStartTime: " + fileWriteStartTime);
       mapOutputWriter.commitAllPartitions();
+      writeMetrics.incIndexFileWriteTime(System.nanoTime() - fileWriteStartTime);
     } catch (Exception e) {
       try {
         mapOutputWriter.abort(e);
@@ -282,6 +308,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       }
       throw e;
     } finally {
+      logger.info("TIMESTAMP: finishedFileWriteTime: " + System.nanoTime());
       writeMetrics.incWriteTime(System.nanoTime() - writeStartTime);
     }
     partitionWriters = null;

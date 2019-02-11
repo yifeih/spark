@@ -24,13 +24,13 @@ import com.google.common.io.ByteStreams
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 
+import org.apache.spark.{util, _}
 import org.apache.spark.executor.ShuffleWriteMetrics
 import org.apache.spark.internal.Logging
 import org.apache.spark.serializer._
 import org.apache.spark.shuffle.api.{CommittedPartition, ShuffleWriteSupport}
 import org.apache.spark.shuffle.sort.LocalCommittedPartition
 import org.apache.spark.storage.{BlockId, DiskBlockObjectWriter, PairsWriter, ShuffleLocation, ShufflePartitionObjectWriter}
-import org.apache.spark.{util, _}
 
 /**
  * Sorts and potentially merges a number of key-value pairs of type (K, V) to produce key-combiner
@@ -731,7 +731,8 @@ private[spark] class ExternalSorter[K, V, C](
 
     // Track location of each range in the output file
     val committedPartitions = new Array[CommittedPartition](numPartitions)
-    val mapOutputWriter = writeSupport.newMapOutputWriter(conf.getAppId, shuffleId, mapId)
+    val mapOutputWriter = writeSupport.newMapOutputWriter(conf.getAppId,
+      shuffleId, mapId, context.taskMetrics().shuffleWriteMetrics)
     val writer = new ShufflePartitionObjectWriter(
       Math.min(serializerBatchSize, Integer.MAX_VALUE).toInt,
       serInstance,

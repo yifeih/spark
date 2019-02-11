@@ -4,6 +4,7 @@ import org.apache.spark.network.client.TransportClient;
 import org.apache.spark.network.client.TransportClientFactory;
 import org.apache.spark.network.shuffle.protocol.RegisterShuffleIndex;
 import org.apache.spark.network.shuffle.protocol.UploadShuffleIndex;
+import org.apache.spark.shuffle.ShuffleWriteMetricsReporter;
 import org.apache.spark.shuffle.api.ShuffleMapOutputWriter;
 import org.apache.spark.shuffle.api.ShufflePartitionWriter;
 import org.slf4j.Logger;
@@ -20,6 +21,7 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
     private final String appId;
     private final int shuffleId;
     private final int mapId;
+    private final ShuffleWriteMetricsReporter writeMetrics;
 
     public ExternalShuffleMapOutputWriter(
             TransportClientFactory clientFactory,
@@ -27,13 +29,15 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
             int port,
             String appId,
             int shuffleId,
-            int mapId) {
+            int mapId,
+            ShuffleWriteMetricsReporter writeMetrics) {
         this.clientFactory = clientFactory;
         this.hostName = hostName;
         this.port = port;
         this.appId = appId;
         this.shuffleId = shuffleId;
         this.mapId = mapId;
+        this.writeMetrics = writeMetrics;
 
         TransportClient client = null;
         try {
@@ -59,7 +63,7 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
     public ShufflePartitionWriter newPartitionWriter(int partitionId) {
         try {
             return new ExternalShufflePartitionWriter(clientFactory,
-                hostName, port, appId, shuffleId, mapId, partitionId);
+                hostName, port, appId, shuffleId, mapId, partitionId, writeMetrics);
         } catch (Exception e) {
             clientFactory.close();
             logger.error("Encountered error while creating transport client", e);

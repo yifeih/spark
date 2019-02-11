@@ -7,6 +7,7 @@ import org.apache.spark.network.client.TransportClientFactory;
 import org.apache.spark.network.crypto.AuthClientBootstrap;
 import org.apache.spark.network.sasl.SecretKeyHolder;
 import org.apache.spark.network.util.TransportConf;
+import org.apache.spark.shuffle.ShuffleWriteMetricsReporter;
 import org.apache.spark.shuffle.api.ShuffleMapOutputWriter;
 import org.apache.spark.shuffle.api.ShuffleWriteSupport;
 import org.slf4j.Logger;
@@ -41,7 +42,8 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
 }
 
   @Override
-  public ShuffleMapOutputWriter newMapOutputWriter(String appId, int shuffleId, int mapId) {
+  public ShuffleMapOutputWriter newMapOutputWriter(String appId, int shuffleId, int mapId,
+                                                   ShuffleWriteMetricsReporter writeMetrics) {
     List<TransportClientBootstrap> bootstraps = Lists.newArrayList();
     if (authEnabled) {
       bootstraps.add(new AuthClientBootstrap(conf, appId, secretKeyHolder));
@@ -49,6 +51,6 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
     TransportClientFactory clientFactory = context.createClientFactory(bootstraps);
     logger.info("Clientfactory: " + clientFactory.toString());
     return new ExternalShuffleMapOutputWriter(
-      clientFactory, hostname, port, appId, shuffleId, mapId);
+      clientFactory, hostname, port, appId, shuffleId, mapId, writeMetrics);
   }
 }
