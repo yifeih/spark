@@ -51,7 +51,6 @@ class ShuffleMetricsOutputSparkListener extends SparkListener with Logging {
       s"${writeMetrics.fileWriteTime} " +
       s"${writeMetrics.numFilesWritten}")
 
-
     logInfo(s"WriteMetrics-writeTime: " + writeMetrics.writeTime)
     logInfo(s"WriteMetrics-fileWriteTime: " + writeMetrics.fileWriteTime)
     logInfo(s"WriteMetrics-numFilesWritten: " + writeMetrics.numFilesWritten)
@@ -62,6 +61,9 @@ class ShuffleMetricsOutputSparkListener extends SparkListener with Logging {
     logInfo(s"WriteMetrics-createPartitionWriterTime: " + writeMetrics.createPartitionWriterTime)
     logInfo(s"WriteMetrics-streamFileWriteTime: " + writeMetrics.streamFileWriteTime)
     logInfo(s"WriteMetrics-createMapOutputWriterTime: " + writeMetrics.createMapOutputWriterTime)
+    logInfo(s"WriteMetrics-fileInputStreamTime: " + writeMetrics.fileInputStreamTime)
+    logInfo(s"WriteMetrics-createClientFactoryTime: " + writeMetrics.createClientFactoryTime)
+    logInfo(s"WriteMetrics-createClientTime: " + writeMetrics.createClientTime)
   }
 
 }

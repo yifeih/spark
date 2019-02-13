@@ -68,6 +68,9 @@ private[spark] object InternalAccumulator {
     val CREATE_PARTITION_WRITER_TIME = SHUFFLE_WRITE_METRICS_PREFIX + "createPartitionWriterTime"
     val CREATE_MAP_OUTPUT_WRITER_TIME = SHUFFLE_WRITE_METRICS_PREFIX + "createMapOutputWriterTime"
     val STREAM_FILE_WRITE_TIME = SHUFFLE_WRITE_METRICS_PREFIX + "streamFileWriteTime"
+    val FILE_INPUT_STREAM_TIME = SHUFFLE_WRITE_METRICS_PREFIX + "fileInputStreamTime"
+    val CREATE_CLIENT_FACTORY_TIME = SHUFFLE_WRITE_METRICS_PREFIX + "createClientFactoryTime"
+    val CREATE_CLIENT_TIME =  SHUFFLE_WRITE_METRICS_PREFIX + "createClientTime"
   }
 
   // Names of output metrics

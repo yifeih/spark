@@ -1,5 +1,6 @@
 package org.apache.spark.shuffle.external;
 
+import com.google.common.util.concurrent.SettableFuture;
 import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.buffer.NioManagedBuffer;
 import org.apache.spark.network.client.RpcResponseCallback;
@@ -11,7 +12,9 @@ import org.apache.spark.shuffle.api.ShufflePartitionWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
@@ -65,6 +68,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
             logger.info("clientid: " + client.getClientId() + " " + client.isActive());
             logger.info("THE BUFFER HASH CODE IS: " + Arrays.hashCode(buf));
 
+            SettableFuture future = SettableFuture.create();
             final long startTime = System.nanoTime();
             RpcResponseCallback callback = new RpcResponseCallback() {
                 @Override
@@ -72,6 +76,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
                     logger.info("Successfully uploaded partition: " + System.nanoTime());
                     logger.info("StreamFileWriteTime: " + (System.nanoTime() - startTime));
                     writeMetrics.incStreamFileWriteTime(System.nanoTime() - startTime);
+                    future.set(null);
                 }
 
                 @Override
@@ -85,6 +90,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
             totalLength += size;
             logger.info("Partition Length: " + totalLength);
             logger.info("Size: " + size);
+            future.get();
         } catch (Exception e) {
             if (client != null) {
                 client.close();

@@ -41,6 +41,7 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
         this.writeMetrics = writeMetrics;
 
         try {
+            final long startClientCreationTime = System.nanoTime();
             client = clientFactory.createUnmanagedClient(hostName, port);
             ByteBuffer registerShuffleIndex = new RegisterShuffleIndex(
                     appId, shuffleId, mapId).toByteBuffer();
@@ -48,6 +49,7 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
                     "index-register-%s-%d-%d", appId, shuffleId, mapId);
             client.setClientId(requestID);
             logger.info("clientid: " + client.getClientId() + " " + client.isActive());
+            writeMetrics.incCreateClientTime(System.nanoTime() - startClientCreationTime);
             client.sendRpcSync(registerShuffleIndex, 60000);
         } catch (Exception e) {
             logger.error("Encountered error while creating transport client", e);

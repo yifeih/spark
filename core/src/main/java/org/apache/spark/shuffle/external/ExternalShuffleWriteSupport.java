@@ -44,12 +44,14 @@ public class ExternalShuffleWriteSupport implements ShuffleWriteSupport {
   @Override
   public ShuffleMapOutputWriter newMapOutputWriter(String appId, int shuffleId, int mapId,
                                                    ShuffleWriteMetricsReporter writeMetrics) {
+    final long startClientFactoryCreationTime = System.nanoTime();
     List<TransportClientBootstrap> bootstraps = Lists.newArrayList();
     if (authEnabled) {
       bootstraps.add(new AuthClientBootstrap(conf, appId, secretKeyHolder));
     }
     TransportClientFactory clientFactory = context.createClientFactory(bootstraps);
     logger.info("Clientfactory: " + clientFactory.toString());
+    writeMetrics.incCreateClientFactoryTime(System.nanoTime() - startClientFactoryCreationTime);
     return new ExternalShuffleMapOutputWriter(
       clientFactory, hostname, port, appId, shuffleId, mapId, writeMetrics);
   }

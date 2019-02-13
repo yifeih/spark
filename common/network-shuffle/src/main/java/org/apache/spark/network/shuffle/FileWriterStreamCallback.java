@@ -126,12 +126,18 @@ public class FileWriterStreamCallback implements StreamCallbackWithID {
   @Override
   public void onComplete(String streamId) throws IOException {
     if (startTime != 0) {
-      logger.info("METRICS: Writing file " + file.getName() + " took " + (System.nanoTime() - startTime));
+      logger.info("METRICS: Streaming file " + file.getName() + " took " + (System.nanoTime() - startTime));
     }
     logger.info(
             "Finished writing {}. File type: {}", file.getAbsolutePath(), fileType);
     fileOutputChannel.close();
+    if (startTime != 0) {
+      logger.info("METRICS: Writing file " + file.getName() + " took " + (System.nanoTime() - startTime));
+    }
     callback.onSuccess(ByteBuffer.allocate(0));
+    if (startTime != 0) {
+      logger.info("METRICS: Sending write file callback for " + file.getName() + " took " + (System.nanoTime() - startTime));
+    }
   }
 
   @Override

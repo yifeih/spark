@@ -112,10 +112,15 @@ private[spark] class KubernetesExternalShuffleBlockHandler(
         }
 
       case RegisterIndexParam(appId, shuffleId, mapId) =>
+        val startRegisterIndexTime = System.nanoTime()
         logInfo(s"Received register index param from app $appId")
         globalPartitionLengths.putIfAbsent(
           (appId, shuffleId, mapId), TreeMap.empty[Int, Long])
+        logInfo(s"METRICS: RegisterIndexParam processing time:" +
+          s" ${System.nanoTime() - startRegisterIndexTime}")
         callback.onSuccess(ByteBuffer.allocate(0))
+        logInfo(s"METRICS: RegisterIndexParam processing callback time:" +
+          s" ${System.nanoTime() - startRegisterIndexTime}")
 
       case UploadIndexParam(appId, shuffleId, mapId) =>
         val responseDelayContext = metricSet.writeIndexRequestLatencyMillis.time()

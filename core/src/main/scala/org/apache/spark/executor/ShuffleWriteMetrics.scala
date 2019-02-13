@@ -39,6 +39,9 @@ class ShuffleWriteMetrics private[spark] () extends ShuffleWriteMetricsReporter 
   private[executor] val _createPartitionWriterTime = new LongAccumulator
   private[executor] val _createMapOutputWriterTime = new LongAccumulator
   private[executor] val _streamFileWriteTime = new LongAccumulator
+  private[executor] val _fileInputStreamTime = new LongAccumulator
+  private[executor] val _createClientFactoryTime = new LongAccumulator
+  private[executor] val _createClientTime = new LongAccumulator
 
   /**
    * Number of bytes written for the shuffle by this task.
@@ -81,6 +84,12 @@ class ShuffleWriteMetrics private[spark] () extends ShuffleWriteMetricsReporter 
 
   def streamFileWriteTime: Long = _streamFileWriteTime.sum
 
+  def fileInputStreamTime: Long = _fileInputStreamTime.sum
+
+  def createClientFactoryTime: Long = _createClientFactoryTime.sum
+
+  def createClientTime: Long = _createClientTime.sum
+
   private[spark] override def incBytesWritten(v: Long): Unit = _bytesWritten.add(v)
   private[spark] override def incRecordsWritten(v: Long): Unit = _recordsWritten.add(v)
   private[spark] override def incWriteTime(v: Long): Unit = _writeTime.add(v)
@@ -101,4 +110,11 @@ class ShuffleWriteMetrics private[spark] () extends ShuffleWriteMetricsReporter 
     _createMapOutputWriterTime.add(v)
 
   override private[spark] def incStreamFileWriteTime(v: Long): Unit = _streamFileWriteTime.add(v)
+
+  override private[spark] def incFileInputStreamTime(v: Long): Unit = _fileInputStreamTime.add(v)
+
+  override private[spark] def incCreateClientFactoryTime(v: Long): Unit =
+    _createClientFactoryTime.add(v)
+
+  override private[spark] def incCreateClientTime(v: Long): Unit = _createClientTime.add(v)
 }
