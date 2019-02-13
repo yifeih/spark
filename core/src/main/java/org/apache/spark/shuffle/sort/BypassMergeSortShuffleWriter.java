@@ -171,7 +171,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       try {
         committedPartitions = combineAndWritePartitions(tmp);
         logger.info("Successfully wrote partitions without shuffle");
-          final long fileWriteStartTime = System.nanoTime();
+        final long fileWriteStartTime = System.nanoTime();
         shuffleBlockResolver.writeIndexFileAndCommit(shuffleId,
                 mapId,
                 Arrays.stream(committedPartitions).mapToLong(p -> p.length()).toArray(),
@@ -204,9 +204,9 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       // We were passed an empty iterator
       return partitions;
     }
+    final long writeStartTime = System.nanoTime();
     assert(outputFile != null);
     final FileOutputStream out = new FileOutputStream(outputFile, true);
-    final long writeStartTime = System.nanoTime();
     boolean threwException = true;
     try {
       for (int i = 0; i < numPartitions; i++) {
@@ -214,8 +214,9 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         if (file.exists()) {
           final FileInputStream in = new FileInputStream(file);
           boolean copyThrewException = true;
+          final long endFileInputStreamTime = System.nanoTime();
+          writeMetrics.incFileInputStreamTime(endFileInputStreamTime - writeStartTime);
           try {
-            final long streamCopyStartTime = System.nanoTime();
             partitions[i] =
                     new LocalCommittedPartition(
                             Utils.copyStream(in, out, false, transferToEnabled));
@@ -224,10 +225,10 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
             } else {
               logger.info("TransferTo is not enabled");
             }
-            writeMetrics.incStreamCopyWriteTime(System.nanoTime() - streamCopyStartTime);
             copyThrewException = false;
           } finally {
             Closeables.close(in, copyThrewException);
+            writeMetrics.incStreamCopyWriteTime(System.nanoTime() - endFileInputStreamTime);
           }
           if (!file.delete()) {
             logger.error("Unable to delete file for partition {}", i);

@@ -65,8 +65,6 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
             ByteBuffer streamHeader = new UploadShufflePartitionStream(appId, shuffleId, mapId,
                     partitionId, size).toByteBuffer();
             ManagedBuffer managedBuffer = new NioManagedBuffer(ByteBuffer.wrap(buf));
-            logger.info("clientid: " + client.getClientId() + " " + client.isActive());
-            logger.info("THE BUFFER HASH CODE IS: " + Arrays.hashCode(buf));
 
             SettableFuture future = SettableFuture.create();
             final long startTime = System.nanoTime();
