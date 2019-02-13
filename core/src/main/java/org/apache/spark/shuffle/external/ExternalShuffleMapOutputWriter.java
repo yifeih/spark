@@ -22,6 +22,7 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
     private final int shuffleId;
     private final int mapId;
     private final ShuffleWriteMetricsReporter writeMetrics;
+    private final TransportClient client;
 
     public ExternalShuffleMapOutputWriter(
             TransportClientFactory clientFactory,
@@ -39,7 +40,6 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
         this.mapId = mapId;
         this.writeMetrics = writeMetrics;
 
-        TransportClient client = null;
         try {
             client = clientFactory.createUnmanagedClient(hostName, port);
             ByteBuffer registerShuffleIndex = new RegisterShuffleIndex(
@@ -50,7 +50,6 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
             logger.info("clientid: " + client.getClientId() + " " + client.isActive());
             client.sendRpcSync(registerShuffleIndex, 60000);
         } catch (Exception e) {
-            client.close();
             logger.error("Encountered error while creating transport client", e);
             throw new RuntimeException(e);
         }
@@ -62,7 +61,7 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
     @Override
     public ShufflePartitionWriter newPartitionWriter(int partitionId) {
         try {
-            return new ExternalShufflePartitionWriter(clientFactory,
+            return new ExternalShufflePartitionWriter(client,
                 hostName, port, appId, shuffleId, mapId, partitionId, writeMetrics);
         } catch (Exception e) {
             clientFactory.close();
@@ -73,14 +72,11 @@ public class ExternalShuffleMapOutputWriter implements ShuffleMapOutputWriter {
 
     @Override
     public void commitAllPartitions() {
-        TransportClient client = null;
         try {
-            client = clientFactory.createUnmanagedClient(hostName, port);
             ByteBuffer uploadShuffleIndex = new UploadShuffleIndex(
                     appId, shuffleId, mapId).toByteBuffer();
             String requestID = String.format(
                     "index-upload-%s-%d-%d", appId, shuffleId, mapId);
-            client.setClientId(requestID);
             logger.info("clientid: " + client.getClientId() + " " + client.isActive());
             final long startTime = System.nanoTime();
             client.sendRpcSync(uploadShuffleIndex, 60000);

@@ -4,7 +4,6 @@ import org.apache.spark.network.buffer.ManagedBuffer;
 import org.apache.spark.network.buffer.NioManagedBuffer;
 import org.apache.spark.network.client.RpcResponseCallback;
 import org.apache.spark.network.client.TransportClient;
-import org.apache.spark.network.client.TransportClientFactory;
 import org.apache.spark.network.shuffle.protocol.UploadShufflePartitionStream;
 import org.apache.spark.shuffle.ShuffleWriteMetricsReporter;
 import org.apache.spark.shuffle.api.CommittedPartition;
@@ -21,7 +20,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
     private static final Logger logger =
         LoggerFactory.getLogger(ExternalShufflePartitionWriter.class);
 
-    private final TransportClientFactory clientFactory;
+    private final TransportClient client;
     private final String hostName;
     private final int port;
     private final String appId;
@@ -34,7 +33,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
     private final ByteArrayOutputStream partitionBuffer = new ByteArrayOutputStream();
 
     public ExternalShufflePartitionWriter(
-            TransportClientFactory clientFactory,
+            TransportClient client,
             String hostName,
             int port,
             String appId,
@@ -42,7 +41,7 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
             int mapId,
             int partitionId,
             ShuffleWriteMetricsReporter writeMetrics) {
-        this.clientFactory = clientFactory;
+        this.client = client;
         this.hostName = hostName;
         this.port = port;
         this.appId = appId;
@@ -57,16 +56,12 @@ public class ExternalShufflePartitionWriter implements ShufflePartitionWriter {
 
     @Override
     public CommittedPartition commitPartition() {
-        TransportClient client = null;
         try {
             byte[] buf = partitionBuffer.toByteArray();
             int size = buf.length;
             ByteBuffer streamHeader = new UploadShufflePartitionStream(appId, shuffleId, mapId,
                     partitionId, size).toByteBuffer();
             ManagedBuffer managedBuffer = new NioManagedBuffer(ByteBuffer.wrap(buf));
-            client = clientFactory.createUnmanagedClient(hostName, port);
-            client.setClientId(String.format("data-%s-%d-%d-%d",
-                    appId, shuffleId, mapId, partitionId));
             logger.info("clientid: " + client.getClientId() + " " + client.isActive());
             logger.info("THE BUFFER HASH CODE IS: " + Arrays.hashCode(buf));
 

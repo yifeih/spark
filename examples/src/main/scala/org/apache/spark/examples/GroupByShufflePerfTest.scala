@@ -83,6 +83,7 @@ object GroupByShufflePerfTest {
     val array = new Array[String](arraySize)
     for (i <- 1 to arraySize) {
       array(i - 1) = Random.alphanumeric.take(2).mkString
+//      array(i - 1) = mapIntToWord.getOrElse(i-1, "else:q!")
     }
     array
   }
