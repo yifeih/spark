@@ -42,6 +42,7 @@ class ShuffleWriteMetrics private[spark] () extends ShuffleWriteMetricsReporter 
   private[executor] val _fileInputStreamTime = new LongAccumulator
   private[executor] val _createClientFactoryTime = new LongAccumulator
   private[executor] val _createClientTime = new LongAccumulator
+  private[executor] val _sendRegisterShuffleRequestTime = new LongAccumulator
 
   /**
    * Number of bytes written for the shuffle by this task.
@@ -90,6 +91,8 @@ class ShuffleWriteMetrics private[spark] () extends ShuffleWriteMetricsReporter 
 
   def createClientTime: Long = _createClientTime.sum
 
+  def sendRegisterShuffleRequestTime: Long = _sendRegisterShuffleRequestTime.sum
+
   private[spark] override def incBytesWritten(v: Long): Unit = _bytesWritten.add(v)
   private[spark] override def incRecordsWritten(v: Long): Unit = _recordsWritten.add(v)
   private[spark] override def incWriteTime(v: Long): Unit = _writeTime.add(v)
@@ -117,4 +120,7 @@ class ShuffleWriteMetrics private[spark] () extends ShuffleWriteMetricsReporter 
     _createClientFactoryTime.add(v)
 
   override private[spark] def incCreateClientTime(v: Long): Unit = _createClientTime.add(v)
+
+  override private[spark] def incSendRegisterShuffleRequestTime(v: Long): Unit =
+    _sendRegisterShuffleRequestTime.add(v)
 }

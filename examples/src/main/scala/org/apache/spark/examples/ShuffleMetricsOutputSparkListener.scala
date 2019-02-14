@@ -64,6 +64,8 @@ class ShuffleMetricsOutputSparkListener extends SparkListener with Logging {
     logInfo(s"WriteMetrics-fileInputStreamTime: " + writeMetrics.fileInputStreamTime)
     logInfo(s"WriteMetrics-createClientFactoryTime: " + writeMetrics.createClientFactoryTime)
     logInfo(s"WriteMetrics-createClientTime: " + writeMetrics.createClientTime)
+    logInfo(s"WriteMetrics-sendRegisterShuffleRequestTime: " +
+      writeMetrics.sendRegisterShuffleRequestTime)
   }
 
 }

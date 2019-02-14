@@ -59,4 +59,5 @@ private[spark] trait ShuffleWriteMetricsReporter {
   private[spark] def incFileInputStreamTime(v: Long): Unit
   private[spark] def incCreateClientFactoryTime(v: Long): Unit
   private[spark] def incCreateClientTime(v: Long): Unit
+  private[spark] def incSendRegisterShuffleRequestTime(v: Long): Unit
 }

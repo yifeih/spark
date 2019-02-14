@@ -212,10 +212,9 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
       for (int i = 0; i < numPartitions; i++) {
         final File file = partitionWriterSegments[i].file();
         if (file.exists()) {
+          final long streamCopyStartTime = System.nanoTime();
           final FileInputStream in = new FileInputStream(file);
           boolean copyThrewException = true;
-          final long endFileInputStreamTime = System.nanoTime();
-          writeMetrics.incFileInputStreamTime(endFileInputStreamTime - writeStartTime);
           try {
             partitions[i] =
                     new LocalCommittedPartition(
@@ -228,7 +227,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
             copyThrewException = false;
           } finally {
             Closeables.close(in, copyThrewException);
-            writeMetrics.incStreamCopyWriteTime(System.nanoTime() - endFileInputStreamTime);
+            writeMetrics.incStreamCopyWriteTime(System.nanoTime() - streamCopyStartTime);
           }
           if (!file.delete()) {
             logger.error("Unable to delete file for partition {}", i);
@@ -257,30 +256,27 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
         appId, shuffleId, mapId, writeMetrics);
     final long endMapOutputWriterTime = System.nanoTime();
     writeMetrics.incCreateMapOutputWriterTime(endMapOutputWriterTime - writeStartTime);
-    long endFileWriteTime = 0;
     try {
       for (int i = 0; i < numPartitions; i++) {
         final File file = partitionWriterSegments[i].file();
         if (file.exists()) {
           final FileInputStream in = new FileInputStream(file);
-          final long endFileInputStreamTime = System.nanoTime();
-          writeMetrics.incFileInputStreamTime(endFileInputStreamTime - endMapOutputWriterTime);
           boolean copyThrewException = true;
           ShufflePartitionWriter writer = mapOutputWriter.newPartitionWriter(i);
-          final long endNewPartitionWriterTime = System.nanoTime();
-          writeMetrics.incCreatePartitionWriterTime(
-                  endNewPartitionWriterTime - endFileInputStreamTime);
           try {
-            long endStreamCopyTime;
+            final long startCopyStreamTime = System.nanoTime();
             try (OutputStream out = writer.openPartitionStream()) {
               Utils.copyStream(in, out, false, false);
-              endStreamCopyTime = System.nanoTime();
-              writeMetrics.incStreamCopyWriteTime(endStreamCopyTime - endNewPartitionWriterTime);
             }
+            final long endStreamCopyTime = System.nanoTime();
+            writeMetrics.incStreamCopyWriteTime(endStreamCopyTime - startCopyStreamTime);
+
+            final long commitPartitionStartTime = System.nanoTime();
             partitions[i] = writer.commitPartition();
             writeMetrics.incNumFilesWritten();
-            endFileWriteTime = System.nanoTime();
-            writeMetrics.incFileWriteTime(endFileWriteTime - endStreamCopyTime);
+            final long endFileWriteTime = System.nanoTime();
+            writeMetrics.incFileWriteTime(endFileWriteTime - commitPartitionStartTime);
+
             copyThrewException = false;
           } catch (Exception e) {
             try {
@@ -296,9 +292,11 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
           }
         }
       }
+
+      final long startIndexFileWriteTime = System.nanoTime();
       mapOutputWriter.commitAllPartitions();
       final long endIndexFileWriteTime = System.nanoTime();
-      writeMetrics.incIndexFileWriteTime(endIndexFileWriteTime - endFileWriteTime);
+      writeMetrics.incIndexFileWriteTime(endIndexFileWriteTime - startIndexFileWriteTime);
     } catch (Exception e) {
       try {
         mapOutputWriter.abort(e);

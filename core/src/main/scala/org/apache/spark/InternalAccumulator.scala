@@ -71,6 +71,7 @@ private[spark] object InternalAccumulator {
     val FILE_INPUT_STREAM_TIME = SHUFFLE_WRITE_METRICS_PREFIX + "fileInputStreamTime"
     val CREATE_CLIENT_FACTORY_TIME = SHUFFLE_WRITE_METRICS_PREFIX + "createClientFactoryTime"
     val CREATE_CLIENT_TIME =  SHUFFLE_WRITE_METRICS_PREFIX + "createClientTime"
+    val SEND_REGISTER_SHUFFLE_REQUEST_TIME = SHUFFLE_WRITE_METRICS_PREFIX + "sendRegisterShuffleRequestTime"
   }
 
   // Names of output metrics

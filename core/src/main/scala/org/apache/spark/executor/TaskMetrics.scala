@@ -238,6 +238,7 @@ class TaskMetrics private[spark] () extends Serializable {
     shuffleWrite.FILE_INPUT_STREAM_TIME -> shuffleWriteMetrics._fileInputStreamTime,
     shuffleWrite.CREATE_CLIENT_FACTORY_TIME -> shuffleWriteMetrics._createClientFactoryTime,
     shuffleWrite.CREATE_CLIENT_TIME -> shuffleWriteMetrics._createClientTime,
+    shuffleWrite.SEND_REGISTER_SHUFFLE_REQUEST_TIME -> shuffleWriteMetrics._sendRegisterShuffleRequestTime,
     input.BYTES_READ -> inputMetrics._bytesRead,
     input.RECORDS_READ -> inputMetrics._recordsRead,
     output.BYTES_WRITTEN -> outputMetrics._bytesWritten,
