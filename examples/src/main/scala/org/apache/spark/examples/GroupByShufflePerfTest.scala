@@ -50,15 +50,6 @@ object GroupByShufflePerfTest {
 
     spark.sparkContext.addSparkListener(new ShuffleMetricsOutputSparkListener())
 
-//    val words = Array("one", "two", "two", "three", "three", "three")
-//    val wordPairsRDD = spark.sparkContext.parallelize(words).map(word => (word, 1))
-//
-//    val wordCountsWithGroup = wordPairsRDD
-//      .groupByKey()
-//      .map(t => (t._1, t._2.sum))
-//      .collect()
-//
-//    println(wordCountsWithGroup.mkString(","))
     val words = createArray(numRecords)
 
     val wordPairsRDD2 = spark.sparkContext
@@ -71,19 +62,14 @@ object GroupByShufflePerfTest {
 
     println(wordCountsWithGroup2.mkString(","))
 
-//    Thread.sleep(600000)
     spark.stop()
   }
 
 
   def createArray(arraySize: Int) : Array[String] = {
-    val mapIntToWord: Map[Int, String] =
-      Map(0 -> "zero", 1 -> "one", 2 -> "two", 3 -> "three", 4 -> "four")
-
     val array = new Array[String](arraySize)
     for (i <- 1 to arraySize) {
       array(i - 1) = Random.alphanumeric.take(2).mkString
-//      array(i - 1) = mapIntToWord.getOrElse(i-1, "else:q!")
     }
     array
   }
