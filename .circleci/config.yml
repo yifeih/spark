@@ -110,7 +110,6 @@ step_templates:
           git fetch origin "+${CIRCLE_BRANCH}/head:remotes/origin/${CIRCLE_BRANCH}"
         fi
 
-
         if [ -n "$CIRCLE_TAG" ]
         then
           git reset --hard "$CIRCLE_SHA1"
