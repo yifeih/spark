@@ -91,7 +91,7 @@ Many of the example programs print usage help if no params are given.
 ## Running Tests
 
 Testing first requires [building Spark](#building-spark). Once Spark is built, tests
-can be run using the following command:
+can be run using:
 
     ./dev/run-tests
 
