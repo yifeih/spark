@@ -57,8 +57,13 @@ object BypassMergeSortShuffleWriterBenchmark extends BenchmarkBase {
     ShuffleDependency[String, String, String] = _
 
   private var tempDir: File = _
-  private val blockIdToFileMap: mutable.Map[BlockId, File] = new mutable.HashMap[BlockId, File]
   private var shuffleHandle: BypassMergeSortShuffleHandle[String, String] = _
+  private val blockIdToFileMap: mutable.Map[BlockId, File] = new mutable.HashMap[BlockId, File]
+  private val partitioner: HashPartitioner = new HashPartitioner(10)
+  private val defaultConf: SparkConf = new SparkConf(loadDefaults = false)
+  private val javaSerializer: JavaSerializer = new JavaSerializer(defaultConf)
+
+  private val MIN_NUM_ITERS = 10
 
   def setup(transferTo: Boolean): BypassMergeSortShuffleWriter[String, String] = {
     MockitoAnnotations.initMocks(this)
@@ -75,8 +80,8 @@ object BypassMergeSortShuffleWriterBenchmark extends BenchmarkBase {
     }
 
     val taskMetrics = new TaskMetrics
-    when(dependency.partitioner).thenReturn(new HashPartitioner(10))
-    when(dependency.serializer).thenReturn(new JavaSerializer(conf))
+    when(dependency.partitioner).thenReturn(partitioner)
+    when(dependency.serializer).thenReturn(javaSerializer)
     when(dependency.shuffleId).thenReturn(0)
 
     // Create the temporary directory to write local shuffle and temp files
@@ -103,7 +108,7 @@ object BypassMergeSortShuffleWriterBenchmark extends BenchmarkBase {
     )).thenAnswer(new Answer[DiskBlockObjectWriter] {
       override def answer(invocation: InvocationOnMock): DiskBlockObjectWriter = {
         val args = invocation.getArguments
-        val manager = new SerializerManager(new JavaSerializer(conf), conf)
+        val manager = new SerializerManager(javaSerializer, conf)
         new DiskBlockObjectWriter(
           args(1).asInstanceOf[File],
           manager,
@@ -152,8 +157,8 @@ object BypassMergeSortShuffleWriterBenchmark extends BenchmarkBase {
   }
 
   def writeBenchmarkWithLargeDataset(): Unit = {
+    // TODO: assert the spill happened
     val size = 10000000
-    val minNumIters = 10
     val random = new Random(123)
     val data = (1 to size).map { i => {
       val x = random.alphanumeric.take(5).mkString
@@ -162,7 +167,7 @@ object BypassMergeSortShuffleWriterBenchmark extends BenchmarkBase {
     val benchmark = new Benchmark(
       "BypassMergeSortShuffleWrite (with spill) " + size,
       size,
-      minNumIters = minNumIters,
+      minNumIters = MIN_NUM_ITERS,
       output = output)
     benchmark.addTimerCase("without transferTo") { timer =>
       val shuffleWriter = setup(false)
@@ -189,7 +194,9 @@ object BypassMergeSortShuffleWriterBenchmark extends BenchmarkBase {
       Tuple2(x, x)
     } }.toArray
     val benchmark = new Benchmark("BypassMergeSortShuffleWrite (in memory buffer) " + size,
-      size, output = output)
+      size,
+      minNumIters = MIN_NUM_ITERS,
+      output = output)
     benchmark.addTimerCase("small dataset without spills on disk") { timer =>
       val shuffleWriter = setup(false)
       timer.startTiming()
