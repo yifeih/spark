@@ -475,7 +475,7 @@ jobs:
       - run:
           command: ./dev/run-spark-25299-benchmarks.sh
       - store_artifacts:
-          path: /tmp/artifacts
+          path: /tmp/artifacts/
 
   deploy-gradle:
     <<: *defaults
