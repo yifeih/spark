@@ -465,6 +465,8 @@ jobs:
       - image: palantirtechnologies/circle-spark-r:0.1.3
     steps:
       - *checkout-code
+      - *restore-build-sbt-cache
+      - *link-in-build-sbt-cache
       - *restore-ivy-cache
       - *restore-build-binaries-cache
       - *restore-home-sbt-cache
