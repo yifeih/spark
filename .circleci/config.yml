@@ -465,6 +465,9 @@ jobs:
       - image: palantirtechnologies/circle-spark-r:0.1.3
     steps:
       - *checkout-code
+      - *restore-ivy-cache
+      - *restore-build-binaries-cache
+      - *restore-home-sbt-cache
       - run:
           command: ./dev/run-spark-25299-benchmarks.sh
 

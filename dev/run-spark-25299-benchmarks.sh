@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -e
+set -ou pipefail
 
 echo "Running SPARK-25299 benchmarks"
 
