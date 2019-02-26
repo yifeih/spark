@@ -530,7 +530,7 @@ workflows:
       - run-spark-25299-benchmarks:
           requires:
             - build-sbt
-            <<: *spark-25299-branch-only
+          <<: *spark-25299-branch-only
       - run-scala-tests:
           requires:
             - build-sbt
