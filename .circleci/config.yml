@@ -26,7 +26,9 @@ all-branches-and-tags: &all-branches-and-tags
 spark-25299-branch-only: &spark-25299-branch-only
   filters:
     branches:
-      spark-25299
+      only:
+        - spark-25299
+        - yh/add-benchmarks-and-ci
 
 deployable-branches-and-tags: &deployable-branches-and-tags
   filters:
