@@ -23,6 +23,11 @@ all-branches-and-tags: &all-branches-and-tags
     tags:
       only: /.*/
 
+spark-25299-branch-only: &spark-25299-branch-only
+  filters:
+    branches:
+      spark-25299
+
 deployable-branches-and-tags: &deployable-branches-and-tags
   filters:
     tags:
@@ -452,6 +457,14 @@ jobs:
           key: v1-maven-dependency-cache-versioned-{{ checksum "pom.xml" }}
           paths: ~/.m2
 
+  run-spark-25299-benchmarks:
+    <<: *defaults
+    docker:
+      - image: palantirtechnologies/circle-spark-r:0.1.3
+    steps:
+      - run:
+          command: ./dev/run-spark-25299-benchmarks.sh
+
   deploy-gradle:
     <<: *defaults
     docker:
@@ -512,6 +525,10 @@ workflows:
           requires:
             - build-sbt
           <<: *all-branches-and-tags
+      - run-spark-25299-benchmarks:
+          requires:
+            - build-sbt
+            <<: *spark-25299-branch-only
       - run-scala-tests:
           requires:
             - build-sbt
