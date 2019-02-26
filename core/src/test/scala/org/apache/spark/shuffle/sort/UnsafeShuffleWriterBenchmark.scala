@@ -66,7 +66,7 @@ object UnsafeShuffleWriterBenchmark extends BenchmarkBase {
   private var taskMemoryManager: TaskMemoryManager = _
 
   private val DEFAULT_DATA_STRING_SIZE = 5
-  private val MIN_NUM_ITERS = 10
+  private val MIN_NUM_ITERS = 5
 
   def setup(transferTo: Boolean): UnsafeShuffleWriter[String, String] = {
     MockitoAnnotations.initMocks(this)
@@ -125,9 +125,6 @@ object UnsafeShuffleWriterBenchmark extends BenchmarkBase {
         val blockId: TempShuffleBlockId = new TempShuffleBlockId(UUID.randomUUID)
         val file: File = File.createTempFile("spillFile", ".spill", tempDir)
         spillFilesCreated.add(file)
-        // scalastyle:off println
-        println("spill file created")
-        // scalastyle:on println
         (blockId, file)
     })
 
@@ -181,24 +178,27 @@ object UnsafeShuffleWriterBenchmark extends BenchmarkBase {
     // scalastyle:off println
   }
 
-  private class DataIterator(val inputFile: File, val bufferSize: Int)
-    extends Iterator[Product2[String, String]] {
-    val inputStream = new BufferedInputStream(
-      new FileInputStream(tempDataFile), DEFAULT_DATA_STRING_SIZE)
-    val buffer = new Array[Byte](DEFAULT_DATA_STRING_SIZE)
-
+  private class DataIterator private (
+    private val inputStream: BufferedInputStream,
+    private val buffer: Array[Byte]) extends Iterator[Product2[String, String]] {
     override def hasNext: Boolean = {
-      if (inputStream.available() == 0) {
-        inputStream.close()
-      }
       inputStream.available() > 0
     }
 
     override def next(): Product2[String, String] = {
       val read = inputStream.read(buffer)
-      assert(read == 5)
+      assert(read == buffer.length)
       val string = buffer.mkString
       (string, string)
+    }
+  }
+
+  private object DataIterator {
+    def apply(inputFile: File, bufferSize: Int): DataIterator = {
+      val inputStream = new BufferedInputStream(
+        new FileInputStream(inputFile), DEFAULT_DATA_STRING_SIZE)
+      val buffer = new Array[Byte](DEFAULT_DATA_STRING_SIZE)
+      new DataIterator(inputStream, buffer)
     }
   }
 
@@ -231,7 +231,7 @@ object UnsafeShuffleWriterBenchmark extends BenchmarkBase {
     benchmark.addTimerCase("without transferTo") { timer =>
       val shuffleWriter = setup(false)
       timer.startTiming()
-      shuffleWriter.write(new DataIterator(inputFile = tempDataFile, DEFAULT_DATA_STRING_SIZE))
+      shuffleWriter.write(DataIterator(inputFile = tempDataFile, DEFAULT_DATA_STRING_SIZE))
       timer.stopTiming()
       assert(spillFilesCreated.size() == 7)
       cleanupTempFiles()
@@ -239,7 +239,7 @@ object UnsafeShuffleWriterBenchmark extends BenchmarkBase {
     benchmark.addTimerCase("with transferTo") { timer =>
       val shuffleWriter = setup(false)
       timer.startTiming()
-      shuffleWriter.write(new DataIterator(inputFile = tempDataFile, DEFAULT_DATA_STRING_SIZE))
+      shuffleWriter.write(DataIterator(inputFile = tempDataFile, DEFAULT_DATA_STRING_SIZE))
       timer.stopTiming()
       assert(spillFilesCreated.size() == 7)
       cleanupTempFiles()

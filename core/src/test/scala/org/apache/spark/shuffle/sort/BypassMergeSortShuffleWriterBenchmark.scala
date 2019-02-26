@@ -147,17 +147,11 @@ object BypassMergeSortShuffleWriterBenchmark extends BenchmarkBase {
     shuffleWriter
   }
 
-  def write(writer: BypassMergeSortShuffleWriter[String, String],
-            records: Array[(String, String)]): Unit = {
-    writer.write(records.iterator)
-  }
-
   def cleanupTempFiles(): Unit = {
     tempDir.delete()
   }
 
   def writeBenchmarkWithLargeDataset(): Unit = {
-    // TODO: assert the spill happened
     val size = 10000000
     val random = new Random(123)
     val data = (1 to size).map { i => {
@@ -172,14 +166,14 @@ object BypassMergeSortShuffleWriterBenchmark extends BenchmarkBase {
     benchmark.addTimerCase("without transferTo") { timer =>
       val shuffleWriter = setup(false)
       timer.startTiming()
-      write(shuffleWriter, data)
+      shuffleWriter.write(data.iterator)
       timer.stopTiming()
       cleanupTempFiles()
     }
     benchmark.addTimerCase("with transferTo") { timer =>
       val shuffleWriter = setup(true)
       timer.startTiming()
-      write(shuffleWriter, data)
+      shuffleWriter.write(data.iterator)
       timer.stopTiming()
       cleanupTempFiles()
     }
@@ -200,7 +194,7 @@ object BypassMergeSortShuffleWriterBenchmark extends BenchmarkBase {
     benchmark.addTimerCase("small dataset without spills on disk") { timer =>
       val shuffleWriter = setup(false)
       timer.startTiming()
-      write(shuffleWriter, data)
+      shuffleWriter.write(data.iterator)
       timer.stopTiming()
       cleanupTempFiles()
     }
