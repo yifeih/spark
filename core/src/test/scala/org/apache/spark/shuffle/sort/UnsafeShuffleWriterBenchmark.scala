@@ -227,7 +227,8 @@ object UnsafeShuffleWriterBenchmark extends BenchmarkBase {
     val benchmark = new Benchmark("UnsafeShuffleWriter with spills",
       size,
       minNumIters = minNumIters,
-      output = output)
+      output = output,
+      outputPerIteration = true)
     benchmark.addTimerCase("without transferTo") { timer =>
       val shuffleWriter = setup(false)
       timer.startTiming()
