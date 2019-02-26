@@ -222,7 +222,7 @@ object UnsafeShuffleWriterBenchmark extends BenchmarkBase {
 
   def writeBenchmarkWithSpill(): Unit = {
     val size = PackedRecordPointer.MAXIMUM_PAGE_SIZE_BYTES/2/DEFAULT_DATA_STRING_SIZE
-    val minNumIters = 10
+    val minNumIters = 5
     createDataOnDisk(size)
     val benchmark = new Benchmark("UnsafeShuffleWriter with spills",
       size,
