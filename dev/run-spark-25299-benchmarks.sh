@@ -11,6 +11,7 @@ echo "Uploading files to remote store"
 
 SPARK_DIR=`pwd`
 
+mkdir -p /tmp/artifacts
 cp $SPARK_DIR/sql/core/benchmarks/BypassMergeSortShuffleWriterBenchmark-results.txt /tmp/artifacts/
 cp $SPARK_DIR/sql/core/benchmarks/UnsafeShuffleWriterBenchmark-results.txt /tmp/artifacts/
 
