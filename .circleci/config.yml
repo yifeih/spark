@@ -464,6 +464,7 @@ jobs:
     docker:
       - image: palantirtechnologies/circle-spark-r:0.1.3
     steps:
+      - *checkout-code
       - run:
           command: ./dev/run-spark-25299-benchmarks.sh
 
