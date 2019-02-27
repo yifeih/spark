@@ -118,10 +118,7 @@ object SortShuffleWriterBenchmark extends BenchmarkBase {
       (invocation: InvocationOnMock) => {
         val blockId = new TempShuffleBlockId(UUID.randomUUID)
         val file = new File(tempDir, blockId.name)
-        // scalastyle:off println
-        println("created spill file")
         spillFilesCreated.add(file)
-        // scalastyle:on println
         (blockId, file)
       })
 
@@ -261,7 +258,7 @@ object SortShuffleWriterBenchmark extends BenchmarkBase {
       timer.startTiming()
       shuffleWriter.write(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE))
       timer.stopTiming()
-      assert(spillFilesCreated.size() > 0)
+      assert(spillFilesCreated.size() == 8)
       cleanupTempFiles()
     }
 
@@ -276,7 +273,7 @@ object SortShuffleWriterBenchmark extends BenchmarkBase {
       timer.startTiming()
       shuffleWriter.write(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE))
       timer.stopTiming()
-      assert(spillFilesCreated.size() > 0)
+      assert(spillFilesCreated.size() == 8)
       cleanupTempFiles()
     }
 
@@ -286,7 +283,7 @@ object SortShuffleWriterBenchmark extends BenchmarkBase {
       timer.startTiming()
       shuffleWriter.write(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE))
       timer.stopTiming()
-      assert(spillFilesCreated.size() > 0)
+      assert(spillFilesCreated.size() == 8)
       cleanupTempFiles()
     }
     benchmark.run()
