@@ -121,6 +121,7 @@ object SortShuffleWriterBenchmark extends BenchmarkBase {
         spillFilesCreated.add(file)
         (blockId, file)
       })
+    spillFilesCreated.clear()
 
     when(blockManager.getDiskWriter(
       any[BlockId],
