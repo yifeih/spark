@@ -20,6 +20,7 @@ package org.apache.spark.shuffle.sort
 import java.io.File
 import java.util.UUID
 
+import org.apache.commons.io.FileUtils
 import org.mockito.{Mock, MockitoAnnotations}
 import org.mockito.Answers.RETURNS_SMART_NULLS
 import org.mockito.Matchers.{any, anyInt}
@@ -148,7 +149,7 @@ object BypassMergeSortShuffleWriterBenchmark extends BenchmarkBase {
   }
 
   def cleanupTempFiles(): Unit = {
-    tempDir.delete()
+    FileUtils.deleteDirectory(tempDir)
   }
 
   def writeBenchmarkWithLargeDataset(): Unit = {

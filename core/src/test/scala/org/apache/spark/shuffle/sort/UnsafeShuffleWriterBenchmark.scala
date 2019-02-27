@@ -18,8 +18,9 @@ package org.apache.spark.shuffle.sort
 
 import java.io.{BufferedInputStream, File, FileInputStream, FileOutputStream}
 import java.util
-import java.util.{LinkedList, UUID}
+import java.util.UUID
 
+import org.apache.commons.io.FileUtils
 import org.mockito.{Mock, MockitoAnnotations}
 import org.mockito.Answers.RETURNS_SMART_NULLS
 import org.mockito.Matchers.{any, anyInt}
@@ -146,7 +147,7 @@ object UnsafeShuffleWriterBenchmark extends BenchmarkBase {
   }
 
   def cleanupTempFiles(): Unit = {
-    tempDir.delete()
+    FileUtils.deleteDirectory(tempDir)
   }
 
   def createDataInMemory(size: Int): Array[(String, String)] = {
