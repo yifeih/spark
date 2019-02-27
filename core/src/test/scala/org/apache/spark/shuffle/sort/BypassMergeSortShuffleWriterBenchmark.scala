@@ -134,7 +134,6 @@ object BypassMergeSortShuffleWriterBenchmark extends BenchmarkBase {
       }
     }).when(blockResolver)
       .writeIndexFileAndCommit(anyInt, anyInt, any(classOf[Array[Long]]), any(classOf[File]))
-    when(blockManager.diskBlockManager).thenReturn(diskBlockManager)
 
     val shuffleWriter = new BypassMergeSortShuffleWriter[String, String](
       blockManager,
