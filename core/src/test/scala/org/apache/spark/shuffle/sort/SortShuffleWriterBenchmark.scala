@@ -28,8 +28,6 @@ import org.mockito.Matchers.{any, anyInt}
 import org.mockito.Mockito.{doAnswer, when}
 import org.mockito.invocation.InvocationOnMock
 import org.mockito.stubbing.Answer
-import scala.collection.mutable
-import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
 
 import org.apache.spark.{Aggregator, HashPartitioner, ShuffleDependency, SparkConf, SparkEnv, TaskContext}
@@ -65,8 +63,8 @@ object SortShuffleWriterBenchmark extends BenchmarkBase {
   private val spillFilesCreated: util.LinkedList[File] = new util.LinkedList[File]
   private val partitioner: HashPartitioner = new HashPartitioner(10)
   private val defaultConf: SparkConf = new SparkConf()
-  private val serializer = new KryoSerializer(defaultConf)
-  private val serializerManager = new SerializerManager(serializer, defaultConf)
+  private val serializer: KryoSerializer = new KryoSerializer(defaultConf)
+  private val serializerManager: SerializerManager = new SerializerManager(serializer, defaultConf)
   private var memoryManager: TestMemoryManager = new TestMemoryManager(defaultConf)
   private var taskMemoryManager: TaskMemoryManager = new TaskMemoryManager(memoryManager, 0)
 
