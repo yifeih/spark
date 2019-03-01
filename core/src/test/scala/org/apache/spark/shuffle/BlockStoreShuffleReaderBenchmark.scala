@@ -18,19 +18,19 @@ package org.apache.spark.shuffle
 
 import java.io.{File, FileOutputStream}
 import java.nio.channels.ReadableByteChannel
-import java.util.concurrent.Executors
 
 import com.google.common.io.CountingOutputStream
+import org.mockito.{Mock, MockitoAnnotations}
 import org.mockito.Answers.RETURNS_SMART_NULLS
 import org.mockito.Matchers._
 import org.mockito.Mockito.when
-import org.mockito.{Mock, MockitoAnnotations}
 import scala.concurrent.Future
 import scala.util.Random
 
+import org.apache.spark.{MapOutputTracker, ShuffleDependency, SparkConf, SparkEnv, TaskContext}
 import org.apache.spark.benchmark.BenchmarkBase
 import org.apache.spark.executor.TaskMetrics
-import org.apache.spark.memory.{MemoryManager, TaskMemoryManager, TestMemoryManager}
+import org.apache.spark.memory.TestMemoryManager
 import org.apache.spark.network.BlockTransferService
 import org.apache.spark.network.buffer.{FileSegmentManagedBuffer, ManagedBuffer}
 import org.apache.spark.network.netty.{NettyBlockTransferService, SparkTransportConf}
@@ -39,7 +39,6 @@ import org.apache.spark.rpc.{RpcAddress, RpcEndpoint, RpcEndpointRef, RpcEnv, Rp
 import org.apache.spark.serializer.{KryoSerializer, SerializerManager}
 import org.apache.spark.storage.{BlockId, BlockManager, BlockManagerId, BlockManagerMaster, ShuffleBlockId}
 import org.apache.spark.util.Utils
-import org.apache.spark.{MapOutputTracker, ShuffleDependency, SparkConf, SparkEnv, TaskContext}
 
 /**
  * Benchmark to measure performance for aggregate primitives.
@@ -53,13 +52,13 @@ import org.apache.spark.{MapOutputTracker, ShuffleDependency, SparkConf, SparkEn
  */
 object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
 
-  // this is only used to retrieve info about the aggregator/sorters/serializers,
+  // this is only used to retrieve the aggregator/sorters/serializers,
   // so it shouldn't affect the performance significantly
   @Mock(answer = RETURNS_SMART_NULLS) private var dependency:
     ShuffleDependency[String, String, String] = _
   // used only to get metrics, so does not affect perf significantly
   @Mock(answer = RETURNS_SMART_NULLS) private var taskContext: TaskContext = _
-  // only used to retrieve info about the maps at the beginning, doesn't affect perf significantly
+  // only used to retrieve info about the maps at the beginning, doesn't affect perf
   @Mock(answer = RETURNS_SMART_NULLS) private var mapOutputTracker: MapOutputTracker = _
   // this is only used when initializing the block manager, so doesn't affect perf
   @Mock(answer = RETURNS_SMART_NULLS) private var blockManagerMaster: BlockManagerMaster = _
@@ -75,6 +74,9 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
   private val remoteBlockManagerId: BlockManagerId = BlockManagerId("localhost", "localhost", 7002)
   private val transportConf: TransportConf =
     SparkTransportConf.fromSparkConf(defaultConf, "shuffle")
+  private val securityManager: org.apache.spark.SecurityManager =
+    new org.apache.spark.SecurityManager(defaultConf)
+  protected val memoryManager: TestMemoryManager = new TestMemoryManager(defaultConf)
 
   private var tempDir: File = _
 
@@ -84,7 +86,7 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
 
   private val DEFAULT_DATA_STRING_SIZE = 5
 
-  private var rpcEnv: RpcEnv = new RpcEnv(defaultConf) {
+  private val rpcEnv: RpcEnv = new RpcEnv(defaultConf) {
     override def endpointRef(endpoint: RpcEndpoint): RpcEndpointRef = { null }
     override def address: RpcAddress = null
     override def setupEndpoint(name: String, endpoint: RpcEndpoint): RpcEndpointRef = { null }
@@ -97,11 +99,7 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
     override def openChannel(uri: String): ReadableByteChannel = { null }
   }
 
-  protected var memoryManager: TestMemoryManager = _
-  protected var taskMemoryManager: TaskMemoryManager = _
-
-  class TestBlockManager(memoryManager: MemoryManager,
-                         transferService: BlockTransferService,
+  class TestBlockManager(transferService: BlockTransferService,
                          blockManagerMaster: BlockManagerMaster,
                          dataFile: File,
                          fileLength: Long) extends BlockManager("0",
@@ -124,27 +122,23 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
   }
 
   private var blockManager : BlockManager = _
-  private val securityManager = new org.apache.spark.SecurityManager(defaultConf)
 
-
-  def setup(size: Int, fetchLocal: Boolean): BlockStoreShuffleReader[String, String] = {
+  def setupTest(): Unit = {
     MockitoAnnotations.initMocks(this)
     when(blockManagerMaster.registerBlockManager(
       any[BlockManagerId], any[Long], any[Long], any[RpcEndpointRef])).thenReturn(null)
     val dataFileAndLength = generateDataOnDisk(10)
 
-    memoryManager = new TestMemoryManager(defaultConf)
-    taskMemoryManager = new TaskMemoryManager(memoryManager, 0)
     val localShuffleClient = new NettyBlockTransferService(
       defaultConf,
-      new org.apache.spark.SecurityManager(defaultConf),
+      securityManager,
       "localhost",
       "localhost",
-        7000,
-        1
+      7000,
+      1
     )
-    val blockManager =
-      new TestBlockManager(memoryManager,
+    blockManager =
+      new TestBlockManager(
         localShuffleClient,
         blockManagerMaster,
         dataFileAndLength._1,
@@ -153,7 +147,7 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
 
     val externalServer = new NettyBlockTransferService(
       defaultConf,
-      new org.apache.spark.SecurityManager(defaultConf),
+      securityManager,
       "localhost",
       "localhost",
       7002,
@@ -161,7 +155,85 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
     )
 
     val externalBlockManager = new TestBlockManager(
-      memoryManager,
+      externalServer,
+      blockManagerMaster,
+      dataFileAndLength._1,
+      dataFileAndLength._2)
+    externalBlockManager.initialize(defaultConf.getAppId)
+
+    SparkEnv.set(new SparkEnv(
+      "0",
+      null,
+      serializer,
+      null,
+      serializerManager,
+      mapOutputTracker,
+      null,
+      null,
+      blockManager,
+      null,
+      null,
+      null,
+      null,
+      defaultConf
+    ))
+
+    val shuffleHandle = new BaseShuffleHandle(
+      shuffleId = SHUFFLE_ID,
+      numMaps = NUM_MAPS,
+      dependency = dependency)
+
+    val taskMetrics = new TaskMetrics
+    when(taskContext.taskMetrics()).thenReturn(taskMetrics)
+
+    when(dependency.serializer).thenReturn(serializer)
+    when(mapOutputTracker.getMapSizesByExecutorId(SHUFFLE_ID, REDUCE_ID, REDUCE_ID + 1))
+      .thenReturn {
+        val shuffleBlockIdsAndSizes = (0 until NUM_MAPS).map { mapId =>
+          val shuffleBlockId = ShuffleBlockId(SHUFFLE_ID, mapId, REDUCE_ID)
+          (shuffleBlockId, 0L)
+        }
+        // TODO: configurable
+        Seq((remoteBlockManagerId, shuffleBlockIdsAndSizes)).toIterator
+      }
+
+    // TODO: use aggregation + sort
+    when(dependency.aggregator).thenReturn(Option.empty)
+    when(dependency.keyOrdering).thenReturn(Option.empty)
+  }
+
+  def setup(size: Int, fetchLocal: Boolean): BlockStoreShuffleReader[String, String] = {
+    MockitoAnnotations.initMocks(this)
+    when(blockManagerMaster.registerBlockManager(
+      any[BlockManagerId], any[Long], any[Long], any[RpcEndpointRef])).thenReturn(null)
+    val dataFileAndLength = generateDataOnDisk(10)
+
+    val localShuffleClient = new NettyBlockTransferService(
+      defaultConf,
+      securityManager,
+      "localhost",
+      "localhost",
+        7000,
+        1
+    )
+    blockManager =
+      new TestBlockManager(
+        localShuffleClient,
+        blockManagerMaster,
+        dataFileAndLength._1,
+        dataFileAndLength._2)
+    blockManager.initialize(defaultConf.getAppId)
+
+    val externalServer = new NettyBlockTransferService(
+      defaultConf,
+      securityManager,
+      "localhost",
+      "localhost",
+      7002,
+      1
+    )
+
+    val externalBlockManager = new TestBlockManager(
       externalServer,
       blockManagerMaster,
       dataFileAndLength._1,
@@ -204,8 +276,6 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
         Seq((remoteBlockManagerId, shuffleBlockIdsAndSizes)).toIterator
       }
 
-    tempDir = Utils.createTempDir(null, "shuffle")
-
     if (fetchLocal) {
       // to do
     } else {
@@ -229,6 +299,7 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
 
   def generateDataOnDisk(size: Int): (File, Long) = {
     // scalastyle:off println
+    tempDir = Utils.createTempDir(null, "shuffle")
     val tempDataFile: File = File.createTempFile("test-data", "", tempDir)
     println("Generating test data with num records: " + size)
     val random = new Random(123)
@@ -255,6 +326,7 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
   override def runBenchmarkSuite(mainArgs: Array[String]): Unit = {
     val reader = setup(10, false)
     // scalastyle:off println
+    println(reader.read().length)
     println(reader.read().length)
     // scalastyle:on println
 //    assert(reader.read().length == 10 * NUM_MAPS)
