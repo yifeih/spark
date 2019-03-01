@@ -16,28 +16,30 @@
  */
 package org.apache.spark.shuffle
 
-import java.io.{File, FileOutputStream, OutputStream}
-import java.util.concurrent.{Callable, Executors}
+import java.io.{File, FileOutputStream}
+import java.nio.channels.ReadableByteChannel
+import java.util.concurrent.Executors
 
 import com.google.common.io.CountingOutputStream
-import org.mockito.{Mock, MockitoAnnotations}
 import org.mockito.Answers.RETURNS_SMART_NULLS
-import org.mockito.Matchers.any
+import org.mockito.Matchers._
 import org.mockito.Mockito.when
-import org.mockito.invocation.InvocationOnMock
+import org.mockito.{Mock, MockitoAnnotations}
+import scala.concurrent.Future
 import scala.util.Random
 
-import org.apache.spark.{MapOutputTracker, ShuffleDependency, SparkConf, SparkEnv, TaskContext}
 import org.apache.spark.benchmark.BenchmarkBase
 import org.apache.spark.executor.TaskMetrics
+import org.apache.spark.memory.{MemoryManager, TaskMemoryManager, TestMemoryManager}
 import org.apache.spark.network.BlockTransferService
-import org.apache.spark.network.buffer.FileSegmentManagedBuffer
-import org.apache.spark.network.netty.SparkTransportConf
-import org.apache.spark.network.shuffle.{BlockFetchingListener, DownloadFileManager}
+import org.apache.spark.network.buffer.{FileSegmentManagedBuffer, ManagedBuffer}
+import org.apache.spark.network.netty.{NettyBlockTransferService, SparkTransportConf}
 import org.apache.spark.network.util.TransportConf
+import org.apache.spark.rpc.{RpcAddress, RpcEndpoint, RpcEndpointRef, RpcEnv, RpcEnvFileServer}
 import org.apache.spark.serializer.{KryoSerializer, SerializerManager}
-import org.apache.spark.storage.{BlockManager, BlockManagerId, ShuffleBlockId}
+import org.apache.spark.storage.{BlockId, BlockManager, BlockManagerId, BlockManagerMaster, ShuffleBlockId}
 import org.apache.spark.util.Utils
+import org.apache.spark.{MapOutputTracker, ShuffleDependency, SparkConf, SparkEnv, TaskContext}
 
 /**
  * Benchmark to measure performance for aggregate primitives.
@@ -51,21 +53,26 @@ import org.apache.spark.util.Utils
  */
 object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
 
-
-  @Mock(answer = RETURNS_SMART_NULLS) private var blockManager: BlockManager = _
-  @Mock(answer = RETURNS_SMART_NULLS) private var transferService: BlockTransferService = _
+  // this is only used to retrieve info about the aggregator/sorters/serializers,
+  // so it shouldn't affect the performance significantly
   @Mock(answer = RETURNS_SMART_NULLS) private var dependency:
     ShuffleDependency[String, String, String] = _
+  // used only to get metrics, so does not affect perf significantly
   @Mock(answer = RETURNS_SMART_NULLS) private var taskContext: TaskContext = _
+  // only used to retrieve info about the maps at the beginning, doesn't affect perf significantly
   @Mock(answer = RETURNS_SMART_NULLS) private var mapOutputTracker: MapOutputTracker = _
+  // this is only used when initializing the block manager, so doesn't affect perf
+  @Mock(answer = RETURNS_SMART_NULLS) private var blockManagerMaster: BlockManagerMaster = _
 
   private val defaultConf: SparkConf = new SparkConf()
     .set("spark.shuffle.compress", "false")
     .set("spark.shuffle.spill.compress", "false")
+    .set("spark.authenticate", "false")
+    .set("spark.app.id", "test-app")
   private val serializer: KryoSerializer = new KryoSerializer(defaultConf)
   private val serializerManager: SerializerManager = new SerializerManager(serializer, defaultConf)
-  private val execBlockManagerId: BlockManagerId = BlockManagerId("execId", "host", 8000)
-  private val remoteBlockManagerId: BlockManagerId = BlockManagerId("remote", "remote", 8000)
+  private val execBlockManagerId: BlockManagerId = BlockManagerId("localhost", "localhost", 7000)
+  private val remoteBlockManagerId: BlockManagerId = BlockManagerId("localhost", "localhost", 7002)
   private val transportConf: TransportConf =
     SparkTransportConf.fromSparkConf(defaultConf, "shuffle")
 
@@ -76,18 +83,98 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
   private val NUM_MAPS: Int = 1
 
   private val DEFAULT_DATA_STRING_SIZE = 5
-  private val executorPool = Executors.newFixedThreadPool(10)
+
+  private var rpcEnv: RpcEnv = new RpcEnv(defaultConf) {
+    override def endpointRef(endpoint: RpcEndpoint): RpcEndpointRef = { null }
+    override def address: RpcAddress = null
+    override def setupEndpoint(name: String, endpoint: RpcEndpoint): RpcEndpointRef = { null }
+    override def asyncSetupEndpointRefByURI(uri: String): Future[RpcEndpointRef] = { null }
+    override def stop(endpoint: RpcEndpointRef): Unit = { }
+    override def shutdown(): Unit = { }
+    override def awaitTermination(): Unit = { }
+    override def deserialize[T](deserializationAction: () => T): T = { deserializationAction() }
+    override def fileServer: RpcEnvFileServer = { null }
+    override def openChannel(uri: String): ReadableByteChannel = { null }
+  }
+
+  protected var memoryManager: TestMemoryManager = _
+  protected var taskMemoryManager: TaskMemoryManager = _
+
+  class TestBlockManager(memoryManager: MemoryManager,
+                         transferService: BlockTransferService,
+                         blockManagerMaster: BlockManagerMaster,
+                         dataFile: File,
+                         fileLength: Long) extends BlockManager("0",
+    rpcEnv,
+    blockManagerMaster,
+    serializerManager,
+    defaultConf,
+    memoryManager,
+    null, null, transferService, null, 1) {
+    blockManagerId = execBlockManagerId
+
+    override def getBlockData(blockId: BlockId): ManagedBuffer = {
+      new FileSegmentManagedBuffer(
+        transportConf,
+        dataFile,
+        0,
+        fileLength
+      )
+    }
+  }
+
+  private var blockManager : BlockManager = _
+  private val securityManager = new org.apache.spark.SecurityManager(defaultConf)
 
 
   def setup(size: Int, fetchLocal: Boolean): BlockStoreShuffleReader[String, String] = {
     MockitoAnnotations.initMocks(this)
+    when(blockManagerMaster.registerBlockManager(
+      any[BlockManagerId], any[Long], any[Long], any[RpcEndpointRef])).thenReturn(null)
+    val dataFileAndLength = generateDataOnDisk(10)
+
+    memoryManager = new TestMemoryManager(defaultConf)
+    taskMemoryManager = new TaskMemoryManager(memoryManager, 0)
+    val localShuffleClient = new NettyBlockTransferService(
+      defaultConf,
+      new org.apache.spark.SecurityManager(defaultConf),
+      "localhost",
+      "localhost",
+        7000,
+        1
+    )
+    val blockManager =
+      new TestBlockManager(memoryManager,
+        localShuffleClient,
+        blockManagerMaster,
+        dataFileAndLength._1,
+        dataFileAndLength._2)
+    blockManager.initialize(defaultConf.getAppId)
+
+    val externalServer = new NettyBlockTransferService(
+      defaultConf,
+      new org.apache.spark.SecurityManager(defaultConf),
+      "localhost",
+      "localhost",
+      7002,
+      1
+    )
+
+    val externalBlockManager = new TestBlockManager(
+      memoryManager,
+      externalServer,
+      blockManagerMaster,
+      dataFileAndLength._1,
+      dataFileAndLength._2)
+    externalBlockManager.initialize(defaultConf.getAppId)
+
     SparkEnv.set(new SparkEnv(
       "0",
       null,
       serializer,
       null,
       serializerManager,
-      null,
+      mapOutputTracker,
       null,
       null,
       blockManager,
@@ -106,9 +193,7 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
     val taskMetrics = new TaskMetrics
     when(taskContext.taskMetrics()).thenReturn(taskMetrics)
 
-    when(blockManager.shuffleClient).thenReturn(transferService)
     when(dependency.serializer).thenReturn(serializer)
-    when(blockManager.blockManagerId).thenReturn(execBlockManagerId)
     when(mapOutputTracker.getMapSizesByExecutorId(SHUFFLE_ID, REDUCE_ID, REDUCE_ID + 1))
       .thenReturn {
         val shuffleBlockIdsAndSizes = (0 until NUM_MAPS).map { mapId =>
@@ -124,39 +209,6 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
     if (fetchLocal) {
       // to do
     } else {
-      when(transferService.fetchBlocks(
-        any[String],
-        any[Int],
-        any[String],
-        any[Array[String]],
-        any[BlockFetchingListener],
-        any[DownloadFileManager]
-      )).thenAnswer((invocation: InvocationOnMock) => {
-        val blocks = invocation.getArguments()(3).asInstanceOf[Array[String]]
-        val listener = invocation.getArguments()(4).asInstanceOf[BlockFetchingListener]
-
-        // TODO: do this in parallel?
-        for (blockId <- blocks) {
-          val generatedFile = generateDataOnDisk(size)
-          listener.onBlockFetchSuccess(blockId, new FileSegmentManagedBuffer(
-            transportConf,
-            generatedFile._1,
-            0,
-            generatedFile._2
-          ))
-//          executorPool.submit(new Callable[Unit] {
-//            override def call(): Unit = {
-//              val fileGenerated = generateDataOnDisk(size)
-//              listener.onBlockFetchSuccess(blockId, new FileSegmentManagedBuffer(
-//                transportConf,
-//                fileGenerated,
-//                0,
-//                size.toLong * DEFAULT_DATA_STRING_SIZE
-//              ))
-//            }
-//          })
-        }
-      })
     }
 
     // TODO: use aggregation + sort
