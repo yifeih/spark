@@ -17,27 +17,11 @@
 
 package org.apache.spark.shuffle.sort
 
-import java.io.{BufferedInputStream, File, FileInputStream, FileOutputStream}
-import java.util
-import java.util.UUID
+import org.mockito.Mockito.when
 
-import org.apache.commons.io.FileUtils
-import org.mockito.{Mock, MockitoAnnotations}
-import org.mockito.Answers.RETURNS_SMART_NULLS
-import org.mockito.Matchers.{any, anyInt}
-import org.mockito.Mockito.{doAnswer, when}
-import org.mockito.invocation.InvocationOnMock
-import org.mockito.stubbing.Answer
-import scala.util.Random
-
-import org.apache.spark.{Aggregator, HashPartitioner, ShuffleDependency, SparkConf, SparkEnv, TaskContext}
-import org.apache.spark.benchmark.{Benchmark, BenchmarkBase}
-import org.apache.spark.executor.{ShuffleWriteMetrics, TaskMetrics}
-import org.apache.spark.memory.{TaskMemoryManager, TestMemoryManager}
-import org.apache.spark.serializer.{KryoSerializer, SerializerInstance, SerializerManager}
-import org.apache.spark.shuffle.{BaseShuffleHandle, IndexShuffleBlockResolver}
-import org.apache.spark.storage.{BlockId, BlockManager, DiskBlockManager, DiskBlockObjectWriter, TempShuffleBlockId}
-import org.apache.spark.util.Utils
+import org.apache.spark.{Aggregator, SparkEnv}
+import org.apache.spark.benchmark.Benchmark
+import org.apache.spark.shuffle.BaseShuffleHandle
 
 /**
  * Benchmark to measure performance for aggregate primitives.
@@ -49,31 +33,20 @@ import org.apache.spark.util.Utils
  *      Results will be written to "benchmarks/<this class>-results.txt".
  * }}}
  */
-object SortShuffleWriterBenchmark extends BenchmarkBase {
+object SortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase(true) {
 
-  @Mock(answer = RETURNS_SMART_NULLS) private var blockManager: BlockManager = _
-  @Mock(answer = RETURNS_SMART_NULLS) private var blockResolver: IndexShuffleBlockResolver = _
-  @Mock(answer = RETURNS_SMART_NULLS) private var diskBlockManager: DiskBlockManager = _
-  @Mock(answer = RETURNS_SMART_NULLS) private var taskContext: TaskContext = _
-  @Mock(answer = RETURNS_SMART_NULLS) private var dependency:
-    ShuffleDependency[String, String, String] = _
-
-  private var tempDir: File = _
-  private var shuffleHandle: BaseShuffleHandle[String, String, String] = _
-  private val spillFilesCreated: util.LinkedList[File] = new util.LinkedList[File]
-  private val partitioner: HashPartitioner = new HashPartitioner(10)
-  private val defaultConf: SparkConf = new SparkConf()
-  private val serializer: KryoSerializer = new KryoSerializer(defaultConf)
-  private val serializerManager: SerializerManager = new SerializerManager(serializer, defaultConf)
-  private var memoryManager: TestMemoryManager = new TestMemoryManager(defaultConf)
-  private var taskMemoryManager: TaskMemoryManager = new TaskMemoryManager(memoryManager, 0)
+  private var shuffleHandle: BaseShuffleHandle[String, String, String] =
+    new BaseShuffleHandle(
+      shuffleId = 0,
+      numMaps = 1,
+      dependency = dependency)
 
   private val DEFAULT_DATA_STRING_SIZE = 5
   private val MIN_NUM_ITERS = 5
 
-  def setup(aggregator: Option[Aggregator[String, String, String]],
-            sorter: Option[Ordering[String]]): SortShuffleWriter[String, String, String] = {
-    MockitoAnnotations.initMocks(this)
+  def constructWriter(aggregator: Option[Aggregator[String, String, String]],
+                      sorter: Option[Ordering[String]]):
+                        SortShuffleWriter[String, String, String] = {
     // we need this since SortShuffleWriter uses SparkEnv to get lots of its private vars
     val defaultSparkEnv = SparkEnv.get
     SparkEnv.set(new SparkEnv(
@@ -92,14 +65,7 @@ object SortShuffleWriterBenchmark extends BenchmarkBase {
       null,
       defaultConf
     ))
-    shuffleHandle = new BaseShuffleHandle(
-      shuffleId = 0,
-      numMaps = 1,
-      dependency = dependency)
 
-    when(dependency.partitioner).thenReturn(partitioner)
-    when(dependency.serializer).thenReturn(serializer)
-    when(dependency.shuffleId).thenReturn(0)
     if (aggregator.isEmpty && sorter.isEmpty) {
       when(dependency.mapSideCombine).thenReturn(false)
     } else {
@@ -108,57 +74,6 @@ object SortShuffleWriterBenchmark extends BenchmarkBase {
       when(dependency.keyOrdering).thenReturn(sorter)
     }
 
-    tempDir = Utils.createTempDir()
-    val outputFile = File.createTempFile("shuffle", null, tempDir)
-    when(blockResolver.getDataFile(0, 0)).thenReturn(outputFile)
-    when(blockManager.diskBlockManager).thenReturn(diskBlockManager)
-    when(diskBlockManager.createTempShuffleBlock()).thenAnswer(
-      (invocation: InvocationOnMock) => {
-        val blockId = new TempShuffleBlockId(UUID.randomUUID)
-        val file = new File(tempDir, blockId.name)
-        spillFilesCreated.add(file)
-        (blockId, file)
-      })
-    spillFilesCreated.clear()
-
-    when(blockManager.getDiskWriter(
-      any[BlockId],
-      any[File],
-      any[SerializerInstance],
-      anyInt(),
-      any[ShuffleWriteMetrics]
-    )).thenAnswer(new Answer[DiskBlockObjectWriter] {
-      override def answer(invocation: InvocationOnMock): DiskBlockObjectWriter = {
-        val args = invocation.getArguments
-        val manager = serializerManager
-        new DiskBlockObjectWriter(
-          args(1).asInstanceOf[File],
-          manager,
-          args(2).asInstanceOf[SerializerInstance],
-          args(3).asInstanceOf[Int],
-          syncWrites = false,
-          args(4).asInstanceOf[ShuffleWriteMetrics],
-          blockId = args(0).asInstanceOf[BlockId]
-        )
-      }
-    })
-
-    doAnswer(new Answer[Void] {
-      def answer(invocationOnMock: InvocationOnMock): Void = {
-        val tmp: File = invocationOnMock.getArguments()(3).asInstanceOf[File]
-        if (tmp != null) {
-          outputFile.delete
-          tmp.renameTo(outputFile)
-        }
-        null
-      }
-    }).when(blockResolver)
-      .writeIndexFileAndCommit(anyInt, anyInt, any(classOf[Array[Long]]), any(classOf[File]))
-
-    val taskMetrics = new TaskMetrics
-    when(taskContext.taskMetrics()).thenReturn(taskMetrics)
-
-    memoryManager.limit(PackedRecordPointer.MAXIMUM_PAGE_SIZE_BYTES)
     when(taskContext.taskMemoryManager()).thenReturn(taskMemoryManager)
 
     val shuffleWriter = new SortShuffleWriter[String, String, String](
@@ -170,95 +85,38 @@ object SortShuffleWriterBenchmark extends BenchmarkBase {
     shuffleWriter
   }
 
-  def cleanupTempFiles(): Unit = {
-    FileUtils.deleteDirectory(tempDir)
-  }
-
-  def createDataInMemory(size: Int): Array[(String, String)] = {
-    val random = new Random(123)
-    (1 to size).map { i => {
-      val x = random.alphanumeric.take(DEFAULT_DATA_STRING_SIZE).mkString
-      Tuple2(x, x)
-    } }.toArray
-  }
-
-  def createDataOnDisk(size: Int): File = {
-    // scalastyle:off println
-    val tempDataFile: File = File.createTempFile("test-data", "")
-    println("Generating test data with num records: " + size)
-    val random = new Random(123)
-    val dataOutput = new FileOutputStream(tempDataFile)
-    try {
-      (1 to size).foreach { i => {
-        if (i % 1000000 == 0) {
-          println("Wrote " + i + " test data points")
-        }
-        val x = random.alphanumeric.take(DEFAULT_DATA_STRING_SIZE).mkString
-        dataOutput.write(x.getBytes)
-      }}
-    }
-    finally {
-      dataOutput.close()
-    }
-    tempDataFile
-    // scalastyle:off println
-  }
-
-  private class DataIterator private (
-    private val inputStream: BufferedInputStream,
-    private val buffer: Array[Byte]) extends Iterator[Product2[String, String]] {
-    override def hasNext: Boolean = {
-      inputStream.available() > 0
-    }
-
-    override def next(): Product2[String, String] = {
-      val read = inputStream.read(buffer)
-      assert(read == buffer.length)
-      val string = buffer.mkString
-      (string, string)
-    }
-  }
-
-  private object DataIterator {
-    def apply(inputFile: File, bufferSize: Int): DataIterator = {
-      val inputStream = new BufferedInputStream(
-        new FileInputStream(inputFile), DEFAULT_DATA_STRING_SIZE)
-      val buffer = new Array[Byte](DEFAULT_DATA_STRING_SIZE)
-      new DataIterator(inputStream, buffer)
-    }
-  }
-
   def writeBenchmarkWithSmallDataset(): Unit = {
     val size = 1000
     val benchmark = new Benchmark("SortShuffleWriter with spills",
       size,
       minNumIters = MIN_NUM_ITERS,
       output = output)
-    benchmark.addTimerCase("small dataset without spills") { timer =>
-      val writer = setup(Option.empty, Option.empty)
+    addBenchmarkCase(benchmark, "small dataset without spills") { timer =>
+      val writer = constructWriter(Option.empty, Option.empty)
       val array = createDataInMemory(1000)
       timer.startTiming()
       writer.write(array.iterator)
       timer.stopTiming()
-      assert(spillFilesCreated.size() == 0)
-      cleanupTempFiles()
+      assert(tempFilesCreated.length == 0)
     }
     benchmark.run()
   }
 
-  def writeBenchmarkWithSpill(dataFile: File, size: Int): Unit = {
+  def writeBenchmarkWithSpill(): Unit = {
+    val size = PackedRecordPointer.MAXIMUM_PAGE_SIZE_BYTES/4/DEFAULT_DATA_STRING_SIZE
+    val dataFile = createDataOnDisk(size)
+
     val benchmark = new Benchmark("SortShuffleWriter with spills",
       size,
       minNumIters = MIN_NUM_ITERS,
       output = output,
       outputPerIteration = true)
-    benchmark.addTimerCase("no map side combine") { timer =>
-      val shuffleWriter = setup(Option.empty, Option.empty)
+    addBenchmarkCase(benchmark, "no map side combine") { timer =>
+      val shuffleWriter = constructWriter(Option.empty, Option.empty)
       timer.startTiming()
       shuffleWriter.write(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE))
       timer.stopTiming()
-      assert(spillFilesCreated.size() == 8)
-      cleanupTempFiles()
+      assert(tempFilesCreated.length == 8)
     }
 
     def createCombiner(i: String): String = i
@@ -267,35 +125,30 @@ object SortShuffleWriterBenchmark extends BenchmarkBase {
       if (Ordering.String.compare(i, j) > 0) i else j
     val aggregator =
       new Aggregator[String, String, String](createCombiner, mergeValue, mergeCombiners)
-    benchmark.addTimerCase("with map side aggregation") { timer =>
-      val shuffleWriter = setup(Some(aggregator), Option.empty)
+    addBenchmarkCase(benchmark, "with map side aggregation") { timer =>
+      val shuffleWriter = constructWriter(Some(aggregator), Option.empty)
       timer.startTiming()
       shuffleWriter.write(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE))
       timer.stopTiming()
-      assert(spillFilesCreated.size() == 8)
-      cleanupTempFiles()
+      assert(tempFilesCreated.length == 8)
     }
 
     val sorter = Ordering.String
-    benchmark.addTimerCase("with map side sort") { timer =>
-      val shuffleWriter = setup(Option.empty, Some(sorter))
+    addBenchmarkCase(benchmark, "with map side sort") { timer =>
+      val shuffleWriter = constructWriter(Option.empty, Some(sorter))
       timer.startTiming()
       shuffleWriter.write(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE))
       timer.stopTiming()
-      assert(spillFilesCreated.size() == 8)
-      cleanupTempFiles()
+       assert(tempFilesCreated.length == 8)
     }
     benchmark.run()
+    dataFile.delete()
   }
 
   override def runBenchmarkSuite(mainArgs: Array[String]): Unit = {
-
     runBenchmark("SortShuffleWriter writer") {
       writeBenchmarkWithSmallDataset()
-      val size = PackedRecordPointer.MAXIMUM_PAGE_SIZE_BYTES/4/DEFAULT_DATA_STRING_SIZE
-      val tempDataFile = createDataOnDisk(size)
-      writeBenchmarkWithSpill(tempDataFile, size)
-      tempDataFile.delete()
+      writeBenchmarkWithSpill()
     }
   }
 }
