@@ -48,7 +48,7 @@ for benchmark_file in /tmp/artifacts/*.txt; do
 done
 
 echo $RESULTS
-PULL_REQUEST_NUM=$(git log -1 | sed "5q;d" | awk '{print $NF}' | sed 's/(//g' | sed 's/)//g' | sed 's/#//g')
+PULL_REQUEST_NUM=$(git log -1 --pretty=%B | awk '{print $NF}' | sed 's/(//g' | sed 's/)//g' | sed 's/#//g')
 
 
 USERNAME=svc-spark-25299
