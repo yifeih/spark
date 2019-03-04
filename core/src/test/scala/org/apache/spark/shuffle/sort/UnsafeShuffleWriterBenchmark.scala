@@ -16,12 +16,9 @@
  */
 package org.apache.spark.shuffle.sort
 
-import java.io.{BufferedInputStream, File, FileInputStream, FileOutputStream}
-
-import scala.util.Random
-
 import org.apache.spark.SparkConf
 import org.apache.spark.benchmark.Benchmark
+import org.apache.spark.util.Utils
 
 /**
  * Benchmark to measure performance for aggregate primitives.
@@ -33,7 +30,7 @@ import org.apache.spark.benchmark.Benchmark
  *      Results will be written to "benchmarks/<this class>-results.txt".
  * }}}
  */
-object UnsafeShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase(true) {
+object UnsafeShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
 
   private val shuffleHandle: SerializedShuffleHandle[String, String] =
     new SerializedShuffleHandle[String, String](0, 0, this.dependency)
@@ -85,16 +82,22 @@ object UnsafeShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase(true) {
       outputPerIteration = true)
     addBenchmarkCase(benchmark, "without transferTo") { timer =>
       val shuffleWriter = constructWriter(false)
-      timer.startTiming()
-      shuffleWriter.write(DataIterator(inputFile = tempDataFile, DEFAULT_DATA_STRING_SIZE))
-      timer.stopTiming()
+      Utils.tryWithResource(DataIterator(inputFile = tempDataFile, DEFAULT_DATA_STRING_SIZE)) {
+        iterator =>
+          timer.startTiming()
+          shuffleWriter.write(iterator)
+          timer.stopTiming()
+      }
       assert(tempFilesCreated.length == 7)
     }
     addBenchmarkCase(benchmark, "with transferTo") { timer =>
       val shuffleWriter = constructWriter(false)
-      timer.startTiming()
-      shuffleWriter.write(DataIterator(inputFile = tempDataFile, DEFAULT_DATA_STRING_SIZE))
-      timer.stopTiming()
+      Utils.tryWithResource(DataIterator(inputFile = tempDataFile, DEFAULT_DATA_STRING_SIZE)) {
+        iterator =>
+          timer.startTiming()
+          shuffleWriter.write(iterator)
+          timer.stopTiming()
+      }
       assert(tempFilesCreated.length == 7)
     }
     benchmark.run()

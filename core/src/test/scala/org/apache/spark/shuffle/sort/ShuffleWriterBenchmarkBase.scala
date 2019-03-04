@@ -17,31 +17,32 @@
 
 package org.apache.spark.shuffle.sort
 
-import java.io.{BufferedInputStream, File, FileInputStream, FileOutputStream}
-import java.nio.channels.ReadableByteChannel
+import java.io.{BufferedInputStream, Closeable, File, FileInputStream, FileOutputStream}
 import java.util.UUID
 
 import org.apache.commons.io.FileUtils
 import org.mockito.{Mock, MockitoAnnotations}
 import org.mockito.Answers.RETURNS_SMART_NULLS
+import org.mockito.Matchers.any
 import org.mockito.Mockito.when
+import org.slf4j.{Logger, LoggerFactory}
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-import scala.concurrent.Future
 import scala.util.Random
 
 import org.apache.spark.{HashPartitioner, ShuffleDependency, SparkConf, TaskContext}
 import org.apache.spark.benchmark.{Benchmark, BenchmarkBase}
 import org.apache.spark.executor.TaskMetrics
 import org.apache.spark.memory.{MemoryManager, TaskMemoryManager, TestMemoryManager}
-import org.apache.spark.rpc.{RpcAddress, RpcEndpoint, RpcEndpointRef, RpcEnv, RpcEnvFileServer}
-import org.apache.spark.serializer.{JavaSerializer, KryoSerializer, Serializer, SerializerManager}
+import org.apache.spark.rpc.{RpcEndpoint, RpcEndpointRef, RpcEnv}
+import org.apache.spark.serializer.{KryoSerializer, Serializer, SerializerManager}
 import org.apache.spark.shuffle.IndexShuffleBlockResolver
 import org.apache.spark.storage.{BlockManager, DiskBlockManager, TempShuffleBlockId}
 import org.apache.spark.util.Utils
 
-abstract class ShuffleWriterBenchmarkBase(useKryoSerializer: Boolean) extends BenchmarkBase {
+abstract class ShuffleWriterBenchmarkBase extends BenchmarkBase {
 
+  private def log: Logger = LoggerFactory.getLogger(this.getClass.getName.stripSuffix("$"))
   private val DEFAULT_DATA_STRING_SIZE = 5
 
   // This is only used in the writer constructors, so it's ok to mock
@@ -49,29 +50,14 @@ abstract class ShuffleWriterBenchmarkBase(useKryoSerializer: Boolean) extends Be
     ShuffleDependency[String, String, String] = _
   // This is only used in the stop() function, so we can safely mock this without affecting perf
   @Mock(answer = RETURNS_SMART_NULLS) protected var taskContext: TaskContext = _
+  @Mock(answer = RETURNS_SMART_NULLS) protected var rpcEnv: RpcEnv = _
+  @Mock(answer = RETURNS_SMART_NULLS) protected var rpcEndpointRef: RpcEndpointRef = _
 
   protected val defaultConf: SparkConf = new SparkConf(loadDefaults = false)
-  protected  val serializer: Serializer = if (useKryoSerializer) {
-    new KryoSerializer(defaultConf)
-  } else {
-    new JavaSerializer(defaultConf)
-  }
+  protected  val serializer: Serializer = new KryoSerializer(defaultConf)
   protected val partitioner: HashPartitioner = new HashPartitioner(10)
   protected val serializerManager: SerializerManager =
     new SerializerManager(serializer, defaultConf)
-
-  private var rpcEnv: RpcEnv = new RpcEnv(defaultConf) {
-    override def endpointRef(endpoint: RpcEndpoint): RpcEndpointRef = { null }
-    override def address: RpcAddress = null
-    override def setupEndpoint(name: String, endpoint: RpcEndpoint): RpcEndpointRef = { null }
-    override def asyncSetupEndpointRefByURI(uri: String): Future[RpcEndpointRef] = { null }
-    override def stop(endpoint: RpcEndpointRef): Unit = { }
-    override def shutdown(): Unit = { }
-    override def awaitTermination(): Unit = { }
-    override def deserialize[T](deserializationAction: () => T): T = { deserializationAction() }
-    override def fileServer: RpcEnvFileServer = { null }
-    override def openChannel(uri: String): ReadableByteChannel = { null }
-  }
 
   protected val tempFilesCreated: ArrayBuffer[File] = new ArrayBuffer[File]
   protected val filenameToFile: mutable.Map[String, File] = new mutable.HashMap[String, File]
@@ -120,6 +106,7 @@ abstract class ShuffleWriterBenchmarkBase(useKryoSerializer: Boolean) extends Be
   when(dependency.shuffleId).thenReturn(0)
   shuffleMetrics = new TaskMetrics
   when(taskContext.taskMetrics()).thenReturn(shuffleMetrics)
+  when(rpcEnv.setupEndpoint(any[String], any[RpcEndpoint])).thenReturn(rpcEndpointRef)
 
   def setup(): Unit = {
     memoryManager = new TestMemoryManager(defaultConf)
@@ -147,8 +134,9 @@ abstract class ShuffleWriterBenchmarkBase(useKryoSerializer: Boolean) extends Be
   }
 
   protected class DataIterator private (
-    private val inputStream: BufferedInputStream,
-    private val buffer: Array[Byte]) extends Iterator[Product2[String, String]] {
+      inputStream: BufferedInputStream,
+      buffer: Array[Byte])
+    extends Iterator[Product2[String, String]] with Closeable {
     override def hasNext: Boolean = {
       inputStream.available() > 0
     }
@@ -159,6 +147,8 @@ abstract class ShuffleWriterBenchmarkBase(useKryoSerializer: Boolean) extends Be
       val string = buffer.mkString
       (string, string)
     }
+
+    override def close(): Unit = inputStream.close()
   }
 
   protected object DataIterator {
@@ -170,8 +160,9 @@ abstract class ShuffleWriterBenchmarkBase(useKryoSerializer: Boolean) extends Be
     }
   }
 
+  private val random = new Random(123)
+
   def createDataInMemory(size: Int): Array[(String, String)] = {
-    val random = new Random(123)
     (1 to size).map { i => {
       val x = random.alphanumeric.take(DEFAULT_DATA_STRING_SIZE).mkString
       Tuple2(x, x)
@@ -179,25 +170,20 @@ abstract class ShuffleWriterBenchmarkBase(useKryoSerializer: Boolean) extends Be
   }
 
   def createDataOnDisk(size: Int): File = {
-    // scalastyle:off println
-    println("Generating test data with num records: " + size)
+    log.info("Generating test data with num records: " + size)
     val tempDataFile = File.createTempFile("test-data", "")
-    val random = new Random(123)
-    val dataOutput = new FileOutputStream(tempDataFile)
-    try {
-      (1 to size).foreach { i => {
-        if (i % 1000000 == 0) {
-          println("Wrote " + i + " test data points")
-        }
-        val x = random.alphanumeric.take(DEFAULT_DATA_STRING_SIZE).mkString
-        dataOutput.write(x.getBytes)
-      }}
+    Utils.tryWithResource(new FileOutputStream(tempDataFile)) {
+      dataOutput =>
+        (1 to size).foreach { i => {
+          if (i % 1000000 == 0) {
+            log.info("Wrote " + i + " test data points")
+          }
+          val x = random.alphanumeric.take(DEFAULT_DATA_STRING_SIZE).mkString
+          dataOutput.write(x.getBytes)
+        }}
     }
-    finally {
-      dataOutput.close()
-    }
+
     tempDataFile
-    // scalastyle:off println
   }
 
 }

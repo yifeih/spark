@@ -100,15 +100,19 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
   }
 
   class TestBlockManager(transferService: BlockTransferService,
-                         blockManagerMaster: BlockManagerMaster,
-                         dataFile: File,
-                         fileLength: Long) extends BlockManager("0",
+      blockManagerMaster: BlockManagerMaster,
+      dataFile: File,
+      fileLength: Long) extends BlockManager("0",
     rpcEnv,
     blockManagerMaster,
     serializerManager,
     defaultConf,
     memoryManager,
-    null, null, transferService, null, 1) {
+    null,
+    null,
+    transferService,
+    null,
+    1) {
     blockManagerId = execBlockManagerId
 
     override def getBlockData(blockId: BlockId): ManagedBuffer = {

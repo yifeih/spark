@@ -22,6 +22,7 @@ import org.mockito.Mockito.when
 import org.apache.spark.{Aggregator, SparkEnv}
 import org.apache.spark.benchmark.Benchmark
 import org.apache.spark.shuffle.BaseShuffleHandle
+import org.apache.spark.util.Utils
 
 /**
  * Benchmark to measure performance for aggregate primitives.
@@ -33,7 +34,7 @@ import org.apache.spark.shuffle.BaseShuffleHandle
  *      Results will be written to "benchmarks/<this class>-results.txt".
  * }}}
  */
-object SortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase(true) {
+object SortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
 
   private var shuffleHandle: BaseShuffleHandle[String, String, String] =
     new BaseShuffleHandle(
@@ -113,9 +114,12 @@ object SortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase(true) {
       outputPerIteration = true)
     addBenchmarkCase(benchmark, "no map side combine") { timer =>
       val shuffleWriter = constructWriter(Option.empty, Option.empty)
-      timer.startTiming()
-      shuffleWriter.write(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE))
-      timer.stopTiming()
+      Utils.tryWithResource(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE)) {
+        iterator =>
+          timer.startTiming()
+          shuffleWriter.write(iterator)
+          timer.stopTiming()
+      }
       assert(tempFilesCreated.length == 8)
     }
 
@@ -127,19 +131,26 @@ object SortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase(true) {
       new Aggregator[String, String, String](createCombiner, mergeValue, mergeCombiners)
     addBenchmarkCase(benchmark, "with map side aggregation") { timer =>
       val shuffleWriter = constructWriter(Some(aggregator), Option.empty)
-      timer.startTiming()
-      shuffleWriter.write(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE))
-      timer.stopTiming()
+      Utils.tryWithResource(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE)) {
+        iterator =>
+          timer.startTiming()
+          shuffleWriter.write(iterator)
+          timer.stopTiming()
+      }
       assert(tempFilesCreated.length == 8)
     }
 
     val sorter = Ordering.String
     addBenchmarkCase(benchmark, "with map side sort") { timer =>
       val shuffleWriter = constructWriter(Option.empty, Some(sorter))
-      timer.startTiming()
-      shuffleWriter.write(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE))
-      timer.stopTiming()
-       assert(tempFilesCreated.length == 8)
+      val iterator: DataIterator = DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE)
+      Utils.tryWithResource(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE)) {
+        iterator =>
+          timer.startTiming()
+          shuffleWriter.write(iterator)
+          timer.stopTiming()
+      }
+      assert(tempFilesCreated.length == 8)
     }
     benchmark.run()
     dataFile.delete()
