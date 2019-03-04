@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
 set -ou pipefail
 
 
@@ -48,7 +52,8 @@ for benchmark_file in /tmp/artifacts/*.txt; do
 done
 
 echo $RESULTS
-PULL_REQUEST_NUM=$(git log -1 --pretty=%B | awk '{print $NF}' | sed 's/(//g' | sed 's/)//g' | sed 's/#//g')
+# Get last git message, filter out empty lines, get the last number of the first line. This is the PR number
+PULL_REQUEST_NUM=$(git log -1 --pretty=%B | awk NF | awk '{print $NF}' | head -1 | sed 's/(//g' | sed 's/)//g' | sed 's/#//g')
 
 
 USERNAME=svc-spark-25299
