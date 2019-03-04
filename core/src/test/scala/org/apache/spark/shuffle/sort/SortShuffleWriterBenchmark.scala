@@ -46,8 +46,7 @@ object SortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
   private val MIN_NUM_ITERS = 5
 
   def constructWriter(aggregator: Option[Aggregator[String, String, String]],
-                      sorter: Option[Ordering[String]]):
-                        SortShuffleWriter[String, String, String] = {
+      sorter: Option[Ordering[String]]): SortShuffleWriter[String, String, String] = {
     // we need this since SortShuffleWriter uses SparkEnv to get lots of its private vars
     val defaultSparkEnv = SparkEnv.get
     SparkEnv.set(new SparkEnv(
