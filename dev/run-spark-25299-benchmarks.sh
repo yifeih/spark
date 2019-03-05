@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 
-<<<<<<< Updated upstream
-=======
-
->>>>>>> Stashed changes
 set -ou pipefail
 
 
