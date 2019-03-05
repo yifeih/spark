@@ -25,7 +25,7 @@
     <version>18</version>
   </parent>
   <groupId>org.apache.spark</groupId>
-  <artifactId>spark-parent_2.12</artifactId>
+  <artifactId>spark-parent_2.11</artifactId>
   <version>3.0.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>Spark Project Parent POM</name>
@@ -39,7 +39,7 @@
   </licenses>
   <scm>
     <connection>scm:git:git@github.com:apache/spark.git</connection>
-    <developerConnection>scm:git:https://git-wip-us.apache.org/repos/asf/spark.git</developerConnection>
+    <developerConnection>scm:git:https://gitbox.apache.org/repos/asf/spark.git</developerConnection>
     <url>scm:git:git@github.com:apache/spark.git</url>
     <tag>HEAD</tag>
   </scm>
@@ -82,31 +82,38 @@
   </mailingLists>
 
   <modules>
-    <module>common/sketch</module>
+    <module>assembly</module>
     <module>common/kvstore</module>
     <module>common/network-common</module>
     <module>common/network-shuffle</module>
-    <module>common/unsafe</module>
+    <module>common/network-yarn</module>
+    <module>common/sketch</module>
     <module>common/tags</module>
+    <module>common/unsafe</module>
     <module>core</module>
+    <module>dists/hadoop-palantir-bom</module>
+    <module>dists/hadoop-palantir</module>
+    <module>examples</module>
+    <module>external/avro</module>
+    <module>external/kafka-0-10-assembly</module>
+    <module>external/kafka-0-10-sql</module>
+    <module>external/kafka-0-10-token-provider</module>
+    <module>external/kafka-0-10</module>
+    <module>external/kinesis-asl-assembly</module>
+    <module>external/kinesis-asl</module>
     <module>graphx</module>
-    <module>mllib</module>
+    <module>hadoop-cloud</module>
+    <module>launcher</module>
     <module>mllib-local</module>
-    <module>tools</module>
-    <module>streaming</module>
+    <module>mllib</module>
+    <module>repl</module>
+    <module>resource-managers/kubernetes/core</module>
+    <module>resource-managers/yarn</module>
     <module>sql/catalyst</module>
     <module>sql/core</module>
     <module>sql/hive</module>
-    <module>assembly</module>
-    <module>examples</module>
-    <module>repl</module>
-    <module>launcher</module>
-    <module>external/kafka-0-10</module>
-    <module>external/kafka-0-10-assembly</module>
-    <module>external/kafka-0-10-sql</module>
-    <module>external/avro</module>
-    <module>dists/hadoop-palantir-bom</module>
-    <module>dists/hadoop-palantir</module>
+    <module>streaming</module>
+    <module>tools</module>
     <!-- See additional modules enabled by profiles below -->
   </modules>
 
@@ -120,7 +127,7 @@
     <sbt.project.name>spark</sbt.project.name>
     <slf4j.version>1.7.25</slf4j.version>
     <log4j.version>1.2.17</log4j.version>
-    <hadoop.version>2.7.4</hadoop.version>
+    <hadoop.version>2.9.1-palantir.11</hadoop.version>
     <protobuf.version>2.5.0</protobuf.version>
     <yarn.version>${hadoop.version}</yarn.version>
     <zookeeper.version>3.4.7</zookeeper.version>
@@ -130,13 +137,15 @@
     <hive.version>1.2.1.spark2</hive.version>
     <!-- Version used for internal directory structure -->
     <hive.version.short>1.2.1</hive.version.short>
+    <!-- note that this should be compatible with Kafka brokers version 0.10 and up -->
+    <kafka.version>2.1.0</kafka.version>
     <derby.version>10.12.1.1</derby.version>
     <parquet.version>1.12.0-palantir.4</parquet.version>
     <okhttp3.version>3.11.0</okhttp3.version>
     <okhttp.version>2.7.5</okhttp.version>
     <okio.version>1.15.0</okio.version>
     <jetty.version>9.4.12.v20180830</jetty.version>
-    <orc.version>1.5.3</orc.version>
+    <orc.version>1.5.4</orc.version>
     <orc.classifier>nohive</orc.classifier>
     <hive.parquet.version>1.6.0</hive.parquet.version>
     <jetty.version>9.4.12.v20180830</jetty.version>
@@ -164,8 +173,11 @@
     <commons.math3.version>3.6.1</commons.math3.version>
     <!-- managed up from 3.2.1 for SPARK-11652 -->
     <commons.collections.version>3.2.2</commons.collections.version>
-    <scala.version>2.12.7</scala.version>
-    <scala.binary.version>2.12</scala.binary.version>
+    <scala.version>2.11.12</scala.version>
+    <scala.binary.version>2.11</scala.binary.version>
+    <scalafmt.parameters>--diff --test</scalafmt.parameters>
+    <!-- for now, not running scalafmt as part of default verify pipeline -->
+    <scalafmt.skip>true</scalafmt.skip>
     <codehaus.jackson.version>1.9.13</codehaus.jackson.version>
     <fasterxml.jackson.version>2.9.7</fasterxml.jackson.version>
     <snappy.version>1.1.7.2</snappy.version>
@@ -182,7 +194,7 @@
     <datanucleus-core.version>3.2.10</datanucleus-core.version>
     <javax-activation.version>1.1.1</javax-activation.version>
     <objenesis.version>2.6</objenesis.version>
-    <janino.version>3.0.10</janino.version>
+    <janino.version>3.0.11</janino.version>
     <jersey.version>2.25.1</jersey.version>
     <joda.version>2.10</joda.version>
     <jodd.version>3.5.2</jodd.version>
@@ -202,7 +214,7 @@
     If you are changing Arrow version specification, please check ./python/pyspark/sql/utils.py,
     ./python/run-tests.py and ./python/setup.py too.
     -->
-    <arrow.version>0.10.0</arrow.version>
+    <arrow.version>0.12.0</arrow.version>
 
     <test.java.home>${java.home}</test.java.home>
     <test.exclude.tags></test.exclude.tags>
@@ -844,11 +856,6 @@
         <version>${jersey.version}</version>
       </dependency>
       <dependency>
-        <groupId>javax.activation</groupId>
-        <artifactId>activation</artifactId>
-        <version>${javax-activation.version}</version>
-      </dependency>
-      <dependency>
         <groupId>org.glassfish.jersey.media</groupId>
         <artifactId>jersey-media-multipart</artifactId>
         <version>${jersey.version}</version>
@@ -926,7 +933,7 @@
       <dependency>
         <groupId>org.mockito</groupId>
         <artifactId>mockito-core</artifactId>
-        <version>1.10.19</version>
+        <version>2.23.4</version>
         <scope>test</scope>
       </dependency>
       <dependency>
@@ -1142,6 +1149,18 @@
         </exclusions>
       </dependency>
       <dependency>
+        <groupId>org.apache.hadoop</groupId>
+        <artifactId>hadoop-azure-datalake</artifactId>
+        <version>${hadoop.version}</version>
+        <scope>${hadoop.deps.scope}</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.hadoop</groupId>
+        <artifactId>hadoop-azure</artifactId>
+        <version>${hadoop.version}</version>
+        <scope>${hadoop.deps.scope}</scope>
+      </dependency>
+      <dependency>
         <groupId>org.apache.avro</groupId>
         <artifactId>avro</artifactId>
         <version>${avro.version}</version>
@@ -1219,7 +1238,7 @@
       <dependency>
         <groupId>javax.activation</groupId>
         <artifactId>activation</artifactId>
-        <version>1.1.1</version>
+        <version>${javax-activation.version}</version>
         <scope>${hadoop.deps.scope}</scope>
       </dependency>
       <dependency>
@@ -2023,6 +2042,10 @@
         <scope>${orc.deps.scope}</scope>
         <exclusions>
           <exclusion>
+            <groupId>javax.xml.bind</groupId>
+            <artifactId>jaxb-api</artifactId>
+          </exclusion>
+          <exclusion>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-common</artifactId>
           </exclusion>
@@ -2232,6 +2255,7 @@
         <groupId>com.thoughtworks.paranamer</groupId>
         <artifactId>paranamer</artifactId>
         <version>${paranamer.version}</version>
+        <scope>runtime</scope>
       </dependency>
       <dependency>
         <groupId>org.apache.arrow</groupId>
@@ -2259,6 +2283,11 @@
             <artifactId>netty-handler</artifactId>
           </exclusion>
         </exclusions>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.kafka</groupId>
+        <artifactId>kafka-clients</artifactId>
+        <version>${kafka.version}</version>
       </dependency>
     </dependencies>
   </dependencyManagement>
@@ -2295,7 +2324,6 @@
                       -->
                       <exclude>org.jboss.netty</exclude>
                       <exclude>org.codehaus.groovy</exclude>
-                      <exclude>*:*_2.11</exclude>
                       <exclude>*:*_2.10</exclude>
                     </excludes>
                     <searchTransitive>true</searchTransitive>
@@ -2343,6 +2371,8 @@
           </executions>
           <configuration>
             <scalaVersion>${scala.version}</scalaVersion>
+            <checkMultipleScalaVersions>true</checkMultipleScalaVersions>
+            <failOnMultipleScalaVersions>true</failOnMultipleScalaVersions>
             <recompileMode>incremental</recompileMode>
             <useZincServer>true</useZincServer>
             <args>
@@ -2386,7 +2416,7 @@
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-surefire-plugin</artifactId>
-          <version>3.0.0-M1</version>
+          <version>3.0.0-M2</version>
           <!-- Note config is repeated in scalatest config -->
           <configuration>
             <includes>
@@ -2396,7 +2426,7 @@
               <include>**/*Suite.java</include>
             </includes>
             <reportsDirectory>${project.build.directory}/surefire-reports</reportsDirectory>
-            <argLine>-ea -Xmx3g -Xss4m -XX:ReservedCodeCacheSize=${CodeCacheSize}</argLine>
+            <argLine>-ea -Xmx4g -Xss4m -XX:ReservedCodeCacheSize=${CodeCacheSize}</argLine>
             <environmentVariables>
               <!--
                 Setting SPARK_DIST_CLASSPATH is a simple way to make sure any child processes
@@ -2446,7 +2476,7 @@
             <reportsDirectory>${project.build.directory}/surefire-reports</reportsDirectory>
             <junitxml>.</junitxml>
             <filereports>SparkTestSuite.txt</filereports>
-            <argLine>-ea -Xmx3g -Xss4m -XX:ReservedCodeCacheSize=${CodeCacheSize} ${extraScalaTestArgs}</argLine>
+            <argLine>-ea -Xmx4g -Xss4m -XX:ReservedCodeCacheSize=${CodeCacheSize} ${extraScalaTestArgs}</argLine>
             <stderr/>
             <environmentVariables>
               <!--
@@ -2892,6 +2922,24 @@
           </execution>
         </executions>
       </plugin>
+      <plugin>
+        <groupId>org.antipathy</groupId>
+        <artifactId>mvn-scalafmt_2.11</artifactId>
+        <version>0.9_1.5.1</version>
+        <configuration>
+          <parameters>${scalafmt.parameters}</parameters> <!-- (Optional) Additional command line arguments -->
+          <skip>${scalafmt.skip}</skip> <!-- (Optional) skip formatting -->
+          <configLocation>dev/.scalafmt.conf</configLocation> <!-- (Optional) config locataion -->
+        </configuration>
+        <executions>
+          <execution>
+            <phase>validate</phase>
+            <goals>
+              <goal>format</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
     </plugins>
   </build>
 
@@ -2954,44 +3002,6 @@
 
     <profile>
       <id>hadoop-palantir</id>
-      <properties>
-        <hadoop.version>2.9.1-palantir.11</hadoop.version>
-        <curator.version>2.7.1</curator.version>
-      </properties>
-      <dependencyManagement>
-        <dependencies>
-          <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-azure-datalake</artifactId>
-            <version>${hadoop.version}</version>
-            <scope>${hadoop.deps.scope}</scope>
-          </dependency>
-          <!--
-          Hadoop-Azure isn't in Hadoop 2.6, so this has to be made
-          a 2.7+ moodule.
-          -->
-          <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-azure</artifactId>
-            <version>${hadoop.version}</version>
-            <scope>${hadoop.deps.scope}</scope>
-            <exclusions>
-              <exclusion>
-                <groupId>org.apache.hadoop</groupId>
-                <artifactId>hadoop-common</artifactId>
-              </exclusion>
-              <exclusion>
-                <groupId>org.codehaus.jackson</groupId>
-                <artifactId>jackson-mapper-asl</artifactId>
-              </exclusion>
-              <exclusion>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-core</artifactId>
-              </exclusion>
-            </exclusions>
-          </dependency>
-        </dependencies>
-      </dependencyManagement>
     </profile>
 
     <profile>
@@ -3059,14 +3069,14 @@
 
     <!-- Exists for backwards compatibility; profile doesn't do anything -->
     <profile>
-      <id>scala-2.12</id>
+      <id>scala-2.11</id>
     </profile>
 
     <profile>
-      <id>scala-2.11</id>
+      <id>scala-2.12</id>
       <properties>
-        <scala.version>2.11.12</scala.version>
-        <scala.binary.version>2.11</scala.binary.version>
+        <scala.version>2.12.7</scala.version>
+        <scala.binary.version>2.12</scala.binary.version>
       </properties>
       <build>
         <plugins>
@@ -3082,9 +3092,8 @@
                 <configuration>
                   <rules>
                     <bannedDependencies>
-                      <excludes combine.self="override">
-                        <exclude>org.jboss.netty</exclude>
-                        <exclude>org.codehaus.groovy</exclude>
+                      <excludes combine.children="append">
+                        <exclude>*:*_2.11</exclude>
                         <exclude>*:*_2.10</exclude>
                       </excludes>
                     </bannedDependencies>
