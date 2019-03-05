@@ -45,8 +45,8 @@ object SortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
   private val DEFAULT_DATA_STRING_SIZE = 5
   private val MIN_NUM_ITERS = 5
 
-  def constructWriter(aggregator: Option[Aggregator[String, String, String]],
-      sorter: Option[Ordering[String]]): SortShuffleWriter[String, String, String] = {
+  def getWriter(aggregator: Option[Aggregator[String, String, String]],
+                sorter: Option[Ordering[String]]): SortShuffleWriter[String, String, String] = {
     // we need this since SortShuffleWriter uses SparkEnv to get lots of its private vars
     val defaultSparkEnv = SparkEnv.get
     SparkEnv.set(new SparkEnv(
@@ -92,7 +92,7 @@ object SortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
       minNumIters = MIN_NUM_ITERS,
       output = output)
     addBenchmarkCase(benchmark, "small dataset without spills") { timer =>
-      val writer = constructWriter(Option.empty, Option.empty)
+      val writer = getWriter(Option.empty, Option.empty)
       val array = createDataInMemory(1000)
       timer.startTiming()
       writer.write(array.iterator)
@@ -112,7 +112,7 @@ object SortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
       output = output,
       outputPerIteration = true)
     addBenchmarkCase(benchmark, "no map side combine") { timer =>
-      val shuffleWriter = constructWriter(Option.empty, Option.empty)
+      val shuffleWriter = getWriter(Option.empty, Option.empty)
       Utils.tryWithResource(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE)) {
         iterator =>
           timer.startTiming()
@@ -129,7 +129,7 @@ object SortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
     val aggregator =
       new Aggregator[String, String, String](createCombiner, mergeValue, mergeCombiners)
     addBenchmarkCase(benchmark, "with map side aggregation") { timer =>
-      val shuffleWriter = constructWriter(Some(aggregator), Option.empty)
+      val shuffleWriter = getWriter(Some(aggregator), Option.empty)
       Utils.tryWithResource(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE)) {
         iterator =>
           timer.startTiming()
@@ -141,7 +141,7 @@ object SortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
 
     val sorter = Ordering.String
     addBenchmarkCase(benchmark, "with map side sort") { timer =>
-      val shuffleWriter = constructWriter(Option.empty, Some(sorter))
+      val shuffleWriter = getWriter(Option.empty, Some(sorter))
       val iterator: DataIterator = DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE)
       Utils.tryWithResource(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE)) {
         iterator =>

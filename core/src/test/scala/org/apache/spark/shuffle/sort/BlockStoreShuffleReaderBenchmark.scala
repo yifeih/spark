@@ -14,13 +14,13 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package org.apache.spark.shuffle
+package org.apache.spark.shuffle.sort
 
 import java.io.{File, FileOutputStream}
 
 import com.google.common.io.CountingOutputStream
 import org.apache.commons.io.FileUtils
-import org.mockito.{Mock, Mockito, MockitoAnnotations}
+import org.mockito.{Mock, MockitoAnnotations}
 import org.mockito.Answers.RETURNS_SMART_NULLS
 import org.mockito.Matchers._
 import org.mockito.Mockito.when
@@ -29,7 +29,7 @@ import scala.util.Random
 import org.apache.spark.{Aggregator, MapOutputTracker, ShuffleDependency, SparkConf, SparkEnv, TaskContext}
 import org.apache.spark.benchmark.{Benchmark, BenchmarkBase}
 import org.apache.spark.executor.TaskMetrics
-import org.apache.spark.memory.TestMemoryManager
+import org.apache.spark.memory.{TaskMemoryManager, TestMemoryManager}
 import org.apache.spark.metrics.source.Source
 import org.apache.spark.network.BlockTransferService
 import org.apache.spark.network.buffer.{FileSegmentManagedBuffer, ManagedBuffer}
@@ -37,6 +37,7 @@ import org.apache.spark.network.netty.{NettyBlockTransferService, SparkTransport
 import org.apache.spark.network.util.TransportConf
 import org.apache.spark.rpc.{RpcEndpoint, RpcEndpointRef, RpcEnv}
 import org.apache.spark.serializer.{KryoSerializer, SerializerManager}
+import org.apache.spark.shuffle.{BaseShuffleHandle, BlockStoreShuffleReader, FetchFailedException}
 import org.apache.spark.storage.{BlockId, BlockManager, BlockManagerId, BlockManagerMaster, ShuffleBlockId}
 import org.apache.spark.util.{AccumulatorV2, TaskCompletionListener, TaskFailureListener, Utils}
 
@@ -70,8 +71,13 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
   private val REDUCE_ID: Int = 0
   private val NUM_MAPS: Int = 5
   private val DEFAULT_DATA_STRING_SIZE = 5
-  private val TEST_DATA_SIZE = 10000000
+  private val TEST_DATA_SIZE: Int = 10000000
+  private val SORT_DATA_SIZE: Int = 1000000
   private val MIN_NUM_ITERS: Int = 10
+
+  private val executorId: String = "0"
+  private val localPort: Int = 17000
+  private val remotePort: Int = 17002
 
   private val defaultConf: SparkConf = new SparkConf()
     .set("spark.shuffle.compress", "false")
@@ -80,8 +86,10 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
     .set("spark.app.id", "test-app")
   private val serializer: KryoSerializer = new KryoSerializer(defaultConf)
   private val serializerManager: SerializerManager = new SerializerManager(serializer, defaultConf)
-  private val execBlockManagerId: BlockManagerId = BlockManagerId("0", "localhost", 17000)
-  private val remoteBlockManagerId: BlockManagerId = BlockManagerId("0", "localhost", 17002)
+  private val execBlockManagerId: BlockManagerId =
+    BlockManagerId(executorId, "localhost", localPort)
+  private val remoteBlockManagerId: BlockManagerId =
+    BlockManagerId(executorId, "localhost", remotePort)
   private val transportConf: TransportConf =
     SparkTransportConf.fromSparkConf(defaultConf, "shuffle")
   private val securityManager: org.apache.spark.SecurityManager =
@@ -91,7 +99,8 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
   class TestBlockManager(transferService: BlockTransferService,
       blockManagerMaster: BlockManagerMaster,
       dataFile: File,
-      fileLength: Long) extends BlockManager("0",
+      fileLength: Long) extends BlockManager(
+    executorId,
     rpcEnv,
     blockManagerMaster,
     serializerManager,
@@ -137,14 +146,18 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
     when(blockManagerMaster.registerBlockManager(
       any[BlockManagerId], any[Long], any[Long], any[RpcEndpointRef])).thenReturn(null)
     when(rpcEnv.setupEndpoint(any[String], any[RpcEndpoint])).thenReturn(rpcEndpointRef)
-    blockManager = getTestBlockManager(17000, dataFile, dataFileLength)
+    blockManager = getTestBlockManager(localPort, dataFile, dataFileLength)
     blockManager.initialize(defaultConf.getAppId)
-    externalBlockManager = getTestBlockManager(17002, dataFile, dataFileLength)
+    externalBlockManager = getTestBlockManager(remotePort, dataFile, dataFileLength)
     externalBlockManager.initialize(defaultConf.getAppId)
   }
 
-  def setup(size: Int,
-            dataFile: File,
+  def stopServers(): Unit = {
+    blockManager.stop()
+    externalBlockManager.stop()
+  }
+
+  def setup(dataFile: File,
             dataFileLength: Long,
             fetchLocal: Boolean,
             aggregator: Option[Aggregator[String, String, String]] = None,
@@ -176,6 +189,9 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
     // the test
     val taskContext = new TaskContext {
       private val metrics: TaskMetrics = new TaskMetrics
+      private val testMemManager = new TestMemoryManager(defaultConf)
+      private val taskMemManager = new TaskMemoryManager(testMemManager, 0)
+      testMemManager.limit(PackedRecordPointer.MAXIMUM_PAGE_SIZE_BYTES)
       override def isCompleted(): Boolean = false
       override def isInterrupted(): Boolean = false
       override def addTaskCompletionListener(listener: TaskCompletionListener):
@@ -191,7 +207,7 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
       override def getMetricsSources(sourceName: String): Seq[Source] = Seq.empty
       override private[spark] def killTaskIfInterrupted(): Unit = {}
       override private[spark] def getKillReason() = None
-      override private[spark] def taskMemoryManager() = { null }
+      override private[spark] def taskMemoryManager() = taskMemManager
       override private[spark] def registerAccumulator(a: AccumulatorV2[_, _]): Unit = {}
       override private[spark] def setFetchFailed(fetchFailed: FetchFailedException): Unit = {}
       override private[spark] def markInterrupted(reason: String): Unit = {}
@@ -200,6 +216,7 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
       override private[spark] def fetchFailed = None
       override private[spark] def getLocalProperties = { null }
     }
+    TaskContext.setTaskContext(taskContext)
 
     var dataBlockId: BlockManagerId = execBlockManagerId
     if (!fetchLocal) {
@@ -215,10 +232,9 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
         Seq((dataBlockId, shuffleBlockIdsAndSizes)).toIterator
       }
 
-    // TODO: use aggregation + sort
     when(dependency.serializer).thenReturn(serializer)
-    when(dependency.aggregator).thenReturn(Option.empty)
-    when(dependency.keyOrdering).thenReturn(Option.empty)
+    when(dependency.aggregator).thenReturn(aggregator)
+    when(dependency.keyOrdering).thenReturn(sorter)
 
     new BlockStoreShuffleReader[String, String](
       shuffleHandle,
@@ -256,19 +272,6 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
     // scalastyle:off println
   }
 
-
-  def countElements(reader: BlockStoreShuffleReader[String, String]): Long = {
-    val iterator = reader.read()
-    var count = 0
-    while (iterator.hasNext) {
-      iterator.next()
-      count += 1
-    }
-    count
-//    val count: Long = reader.read().toStream.foldLeft(0) { (acc, value) => acc + 1 }
-//    count
-  }
-
   override def runBenchmarkSuite(mainArgs: Array[String]): Unit = {
     tempDir = Utils.createTempDir(null, "shuffle")
     val tempDataFile: File = File.createTempFile("test-data", "", tempDir)
@@ -283,14 +286,14 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
           output = output,
           outputPerIteration = true)
       baseBenchmark.addTimerCase("local fetch") { timer =>
-        val reader = setup(TEST_DATA_SIZE, tempDataFile, dataFileLength, fetchLocal = true)
+        val reader = setup(tempDataFile, dataFileLength, fetchLocal = true)
         timer.startTiming()
-        val numRead = countElements(reader)
+        val numRead = reader.read().length
         timer.stopTiming()
         assert(numRead == TEST_DATA_SIZE * NUM_MAPS)
       }
       baseBenchmark.addTimerCase("remote rpc fetch") { timer =>
-        val reader = setup(TEST_DATA_SIZE, tempDataFile, dataFileLength, fetchLocal = false)
+        val reader = setup(tempDataFile, dataFileLength, fetchLocal = false)
         timer.startTiming()
         val numRead = reader.read().length
         timer.stopTiming()
@@ -313,7 +316,7 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
           output = output,
           outputPerIteration = true)
       aggregationBenchmark.addTimerCase("local fetch") { timer =>
-        val reader = setup(TEST_DATA_SIZE,
+        val reader = setup(
           tempDataFile,
           dataFileLength,
           fetchLocal = true,
@@ -321,10 +324,10 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
         timer.startTiming()
         val numRead = reader.read().length
         timer.stopTiming()
-        assert(numRead == TEST_DATA_SIZE * NUM_MAPS)
+        assert(numRead > 0)
       }
       aggregationBenchmark.addTimerCase("remote rpc fetch") { timer =>
-        val reader = setup(TEST_DATA_SIZE,
+        val reader = setup(
           tempDataFile,
           dataFileLength,
           fetchLocal = false,
@@ -332,44 +335,48 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
         timer.startTiming()
         val numRead = reader.read().length
         timer.stopTiming()
-        assert(numRead == TEST_DATA_SIZE * NUM_MAPS)
+        assert(numRead > 0)
       }
       aggregationBenchmark.run()
 
 
+      stopServers()
+      val sortDataFile: File = File.createTempFile("test-data", "", tempDir)
+      val sortFileLength = generateDataOnDisk(SORT_DATA_SIZE, sortDataFile)
+      initializeServers(sortDataFile, sortFileLength)
       val sorter = Ordering.String
       val sortingBenchmark =
         new Benchmark("with sorting",
-          TEST_DATA_SIZE,
+          SORT_DATA_SIZE,
           minNumIters = MIN_NUM_ITERS,
           output = output,
           outputPerIteration = true)
       sortingBenchmark.addTimerCase("local fetch") { timer =>
-        val reader = setup(TEST_DATA_SIZE,
-          tempDataFile,
-          dataFileLength,
+        val reader = setup(
+          sortDataFile,
+          sortFileLength,
           fetchLocal = true,
           sorter = Some(sorter))
         timer.startTiming()
         val numRead = reader.read().length
         timer.stopTiming()
-        assert(numRead == TEST_DATA_SIZE * NUM_MAPS)
+        assert(numRead == SORT_DATA_SIZE * NUM_MAPS)
       }
       sortingBenchmark.addTimerCase("remote rpc fetch") { timer =>
-        val reader = setup(TEST_DATA_SIZE,
-          tempDataFile,
-          dataFileLength,
+        val reader = setup(
+          sortDataFile,
+          sortFileLength,
           fetchLocal = false,
           sorter = Some(sorter))
         timer.startTiming()
         val numRead = reader.read().length
         timer.stopTiming()
-        assert(numRead == TEST_DATA_SIZE * NUM_MAPS)
+        assert(numRead == SORT_DATA_SIZE * NUM_MAPS)
       }
       sortingBenchmark.run()
-
     }
 
+    stopServers()
     FileUtils.deleteDirectory(tempDir)
   }
 }

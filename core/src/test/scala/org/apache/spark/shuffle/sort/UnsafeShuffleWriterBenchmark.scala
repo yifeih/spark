@@ -38,7 +38,7 @@ object UnsafeShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
   private val DEFAULT_DATA_STRING_SIZE = 5
   private val MIN_NUM_ITERS = 5
 
-  def constructWriter(transferTo: Boolean): UnsafeShuffleWriter[String, String] = {
+  def getWriter(transferTo: Boolean): UnsafeShuffleWriter[String, String] = {
     val conf = new SparkConf(loadDefaults = false)
     conf.set("spark.file.transferTo", String.valueOf(transferTo))
 
@@ -61,7 +61,7 @@ object UnsafeShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
       minNumIters = MIN_NUM_ITERS,
       output = output)
     addBenchmarkCase(benchmark, "small dataset without spills") { timer =>
-      val writer = constructWriter(false)
+      val writer = getWriter(false)
       val array = createDataInMemory(1000)
       timer.startTiming()
       writer.write(array.iterator)
@@ -81,7 +81,7 @@ object UnsafeShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
       output = output,
       outputPerIteration = true)
     addBenchmarkCase(benchmark, "without transferTo") { timer =>
-      val shuffleWriter = constructWriter(false)
+      val shuffleWriter = getWriter(false)
       Utils.tryWithResource(DataIterator(inputFile = tempDataFile, DEFAULT_DATA_STRING_SIZE)) {
         iterator =>
           timer.startTiming()
@@ -91,7 +91,7 @@ object UnsafeShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
       assert(tempFilesCreated.length == 7)
     }
     addBenchmarkCase(benchmark, "with transferTo") { timer =>
-      val shuffleWriter = constructWriter(false)
+      val shuffleWriter = getWriter(false)
       Utils.tryWithResource(DataIterator(inputFile = tempDataFile, DEFAULT_DATA_STRING_SIZE)) {
         iterator =>
           timer.startTiming()

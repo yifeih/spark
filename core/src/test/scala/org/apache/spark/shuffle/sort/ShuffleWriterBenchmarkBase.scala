@@ -25,7 +25,6 @@ import org.mockito.{Mock, MockitoAnnotations}
 import org.mockito.Answers.RETURNS_SMART_NULLS
 import org.mockito.Matchers.any
 import org.mockito.Mockito.when
-import org.slf4j.{Logger, LoggerFactory}
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
@@ -42,7 +41,6 @@ import org.apache.spark.util.Utils
 
 abstract class ShuffleWriterBenchmarkBase extends BenchmarkBase {
 
-  private def log: Logger = LoggerFactory.getLogger(this.getClass.getName.stripSuffix("$"))
   private val DEFAULT_DATA_STRING_SIZE = 5
 
   // This is only used in the writer constructors, so it's ok to mock
@@ -174,18 +172,20 @@ abstract class ShuffleWriterBenchmarkBase extends BenchmarkBase {
   }
 
   def createDataOnDisk(size: Int): File = {
-    log.info("Generating test data with num records: " + size)
+    // scalastyle:off println
+    println("Generating test data with num records: " + size)
     val tempDataFile = File.createTempFile("test-data", "")
     Utils.tryWithResource(new FileOutputStream(tempDataFile)) {
       dataOutput =>
         (1 to size).foreach { i => {
           if (i % 1000000 == 0) {
-            log.info("Wrote " + i + " test data points")
+            println("Wrote " + i + " test data points")
           }
           val x = random.alphanumeric.take(DEFAULT_DATA_STRING_SIZE).mkString
           dataOutput.write(x.getBytes)
         }}
     }
+    // scalastyle:on println
 
     tempDataFile
   }
