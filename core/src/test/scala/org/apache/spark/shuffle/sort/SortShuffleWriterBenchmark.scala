@@ -142,7 +142,6 @@ object SortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
     val sorter = Ordering.String
     addBenchmarkCase(benchmark, "with map side sort") { timer =>
       val shuffleWriter = getWriter(Option.empty, Some(sorter))
-      val iterator: DataIterator = DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE)
       Utils.tryWithResource(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE)) {
         iterator =>
           timer.startTiming()

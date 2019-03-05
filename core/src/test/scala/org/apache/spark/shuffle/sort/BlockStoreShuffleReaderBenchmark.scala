@@ -72,7 +72,7 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
   private val NUM_MAPS: Int = 5
   private val DEFAULT_DATA_STRING_SIZE = 5
   private val TEST_DATA_SIZE: Int = 10000000
-  private val SORT_DATA_SIZE: Int = 1000000
+  private val SMALLER_DATA_SIZE: Int = 1000000
   private val MIN_NUM_ITERS: Int = 10
 
   private val executorId: String = "0"
@@ -302,23 +302,27 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
       baseBenchmark.run()
 
 
+      stopServers()
+      val smallerDataFile: File = File.createTempFile("test-data", "", tempDir)
+      val smallerFileLength = generateDataOnDisk(SMALLER_DATA_SIZE, smallerDataFile)
+      initializeServers(smallerDataFile, smallerFileLength)
+
       def createCombiner(i: String): String = i
       def mergeValue(i: String, j: String): String = if (Ordering.String.compare(i, j) > 0) i else j
       def mergeCombiners(i: String, j: String): String =
         if (Ordering.String.compare(i, j) > 0) i else j
       val aggregator =
         new Aggregator[String, String, String](createCombiner, mergeValue, mergeCombiners)
-
       val aggregationBenchmark =
         new Benchmark("with aggregation",
-          TEST_DATA_SIZE,
+          SMALLER_DATA_SIZE,
           minNumIters = MIN_NUM_ITERS,
           output = output,
           outputPerIteration = true)
       aggregationBenchmark.addTimerCase("local fetch") { timer =>
         val reader = setup(
-          tempDataFile,
-          dataFileLength,
+          smallerDataFile,
+          smallerFileLength,
           fetchLocal = true,
           aggregator = Some(aggregator))
         timer.startTiming()
@@ -328,8 +332,8 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
       }
       aggregationBenchmark.addTimerCase("remote rpc fetch") { timer =>
         val reader = setup(
-          tempDataFile,
-          dataFileLength,
+          smallerDataFile,
+          smallerFileLength,
           fetchLocal = false,
           aggregator = Some(aggregator))
         timer.startTiming()
@@ -340,38 +344,34 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
       aggregationBenchmark.run()
 
 
-      stopServers()
-      val sortDataFile: File = File.createTempFile("test-data", "", tempDir)
-      val sortFileLength = generateDataOnDisk(SORT_DATA_SIZE, sortDataFile)
-      initializeServers(sortDataFile, sortFileLength)
       val sorter = Ordering.String
       val sortingBenchmark =
         new Benchmark("with sorting",
-          SORT_DATA_SIZE,
+          SMALLER_DATA_SIZE,
           minNumIters = MIN_NUM_ITERS,
           output = output,
           outputPerIteration = true)
       sortingBenchmark.addTimerCase("local fetch") { timer =>
         val reader = setup(
-          sortDataFile,
-          sortFileLength,
+          smallerDataFile,
+          smallerFileLength,
           fetchLocal = true,
           sorter = Some(sorter))
         timer.startTiming()
         val numRead = reader.read().length
         timer.stopTiming()
-        assert(numRead == SORT_DATA_SIZE * NUM_MAPS)
+        assert(numRead == SMALLER_DATA_SIZE * NUM_MAPS)
       }
       sortingBenchmark.addTimerCase("remote rpc fetch") { timer =>
         val reader = setup(
-          sortDataFile,
-          sortFileLength,
+          smallerDataFile,
+          smallerFileLength,
           fetchLocal = false,
           sorter = Some(sorter))
         timer.startTiming()
         val numRead = reader.read().length
         timer.stopTiming()
-        assert(numRead == SORT_DATA_SIZE * NUM_MAPS)
+        assert(numRead == SMALLER_DATA_SIZE * NUM_MAPS)
       }
       sortingBenchmark.run()
     }
