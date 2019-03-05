@@ -36,19 +36,20 @@ import org.apache.spark.util.Utils
  */
 object SortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
 
-  private var shuffleHandle: BaseShuffleHandle[String, String, String] =
+  private val shuffleHandle: BaseShuffleHandle[String, String, String] =
     new BaseShuffleHandle(
       shuffleId = 0,
       numMaps = 1,
       dependency = dependency)
 
-  private val DEFAULT_DATA_STRING_SIZE = 5
-  private val MIN_NUM_ITERS = 5
+  private val MIN_NUM_ITERS = 10
+  private val DATA_SIZE_SMALL = 1000
+  private val DATA_SIZE_LARGE =
+    PackedRecordPointer.MAXIMUM_PAGE_SIZE_BYTES/4/DEFAULT_DATA_STRING_SIZE
 
   def getWriter(aggregator: Option[Aggregator[String, String, String]],
                 sorter: Option[Ordering[String]]): SortShuffleWriter[String, String, String] = {
     // we need this since SortShuffleWriter uses SparkEnv to get lots of its private vars
-    val defaultSparkEnv = SparkEnv.get
     SparkEnv.set(new SparkEnv(
       "0",
       null,
@@ -86,24 +87,24 @@ object SortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
   }
 
   def writeBenchmarkWithSmallDataset(): Unit = {
-    val size = 1000
-    val benchmark = new Benchmark("SortShuffleWriter with spills",
+    val size = DATA_SIZE_SMALL
+    val benchmark = new Benchmark("SortShuffleWriter without spills",
       size,
       minNumIters = MIN_NUM_ITERS,
       output = output)
     addBenchmarkCase(benchmark, "small dataset without spills") { timer =>
       val writer = getWriter(Option.empty, Option.empty)
-      val array = createDataInMemory(1000)
+      val array = createDataInMemory(size)
       timer.startTiming()
       writer.write(array.iterator)
       timer.stopTiming()
-      assert(tempFilesCreated.length == 0)
+      assert(tempFilesCreated.isEmpty)
     }
     benchmark.run()
   }
 
   def writeBenchmarkWithSpill(): Unit = {
-    val size = PackedRecordPointer.MAXIMUM_PAGE_SIZE_BYTES/4/DEFAULT_DATA_STRING_SIZE
+    val size = DATA_SIZE_LARGE
     val dataFile = createDataOnDisk(size)
 
     val benchmark = new Benchmark("SortShuffleWriter with spills",

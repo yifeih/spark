@@ -19,6 +19,7 @@ package org.apache.spark.shuffle.sort
 
 import org.apache.spark.SparkConf
 import org.apache.spark.benchmark.Benchmark
+import org.apache.spark.util.Utils
 
 /**
  * Benchmark to measure performance for aggregate primitives.
@@ -32,15 +33,16 @@ import org.apache.spark.benchmark.Benchmark
  */
 object BypassMergeSortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
 
-  private var shuffleHandle: BypassMergeSortShuffleHandle[String, String] =
+  private val shuffleHandle: BypassMergeSortShuffleHandle[String, String] =
     new BypassMergeSortShuffleHandle[String, String](
       shuffleId = 0,
       numMaps = 1,
       dependency)
 
   private val MIN_NUM_ITERS = 10
-  private val DATA_SIZE_SMALL = 10000
-  private val DATA_SIZE_LARGE = 10000000
+  private val DATA_SIZE_SMALL = 1000
+  private val DATA_SIZE_LARGE =
+    PackedRecordPointer.MAXIMUM_PAGE_SIZE_BYTES/4/DEFAULT_DATA_STRING_SIZE
 
   def getWriter(transferTo: Boolean): BypassMergeSortShuffleWriter[String, String] = {
     val conf = new SparkConf(loadDefaults = false)
@@ -61,9 +63,9 @@ object BypassMergeSortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase 
 
   def writeBenchmarkWithLargeDataset(): Unit = {
     val size = DATA_SIZE_LARGE
-    val data = createDataInMemory(size)
+    val dataFile = createDataOnDisk(size)
     val benchmark = new Benchmark(
-      "BypassMergeSortShuffleWrite (with spill) " + size,
+      "BypassMergeSortShuffleWrite with spill",
       size,
       minNumIters = MIN_NUM_ITERS,
       output = output)
@@ -71,14 +73,21 @@ object BypassMergeSortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase 
     addBenchmarkCase(benchmark, "without transferTo") { timer =>
       val shuffleWriter = getWriter(false)
       timer.startTiming()
-      shuffleWriter.write(data.iterator)
-      timer.stopTiming()
+      Utils.tryWithResource(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE)) {
+        iterator =>
+          timer.startTiming()
+          shuffleWriter.write(iterator)
+          timer.stopTiming()
+      }
     }
     addBenchmarkCase(benchmark, "with transferTo") { timer =>
-      val shuffleWriter = getWriter(false)
-      timer.startTiming()
-      shuffleWriter.write(data.iterator)
-      timer.stopTiming()
+      val shuffleWriter = getWriter(true)
+      Utils.tryWithResource(DataIterator(inputFile = dataFile, DEFAULT_DATA_STRING_SIZE)) {
+        iterator =>
+          timer.startTiming()
+          shuffleWriter.write(iterator)
+          timer.stopTiming()
+      }
     }
     benchmark.run()
   }
@@ -86,11 +95,11 @@ object BypassMergeSortShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase 
   def writeBenchmarkWithSmallDataset(): Unit = {
     val size = DATA_SIZE_SMALL
     val data = createDataInMemory(size)
-    val benchmark = new Benchmark("BypassMergeSortShuffleWrite (in memory buffer) " + size,
+    val benchmark = new Benchmark("BypassMergeSortShuffleWrite without spill",
       size,
       minNumIters = MIN_NUM_ITERS,
       output = output)
-    addBenchmarkCase(benchmark, "small dataset without spills on disk") { timer =>
+    addBenchmarkCase(benchmark, "small dataset without disk spill") { timer =>
       val shuffleWriter = getWriter(false)
       timer.startTiming()
       shuffleWriter.write(data.iterator)

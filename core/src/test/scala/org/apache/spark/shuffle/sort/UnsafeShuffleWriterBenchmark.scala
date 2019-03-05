@@ -35,8 +35,10 @@ object UnsafeShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
   private val shuffleHandle: SerializedShuffleHandle[String, String] =
     new SerializedShuffleHandle[String, String](0, 0, this.dependency)
 
-  private val DEFAULT_DATA_STRING_SIZE = 5
-  private val MIN_NUM_ITERS = 5
+  private val MIN_NUM_ITERS = 10
+  private val DATA_SIZE_SMALL = 1000
+  private val DATA_SIZE_LARGE =
+    PackedRecordPointer.MAXIMUM_PAGE_SIZE_BYTES/2/DEFAULT_DATA_STRING_SIZE
 
   def getWriter(transferTo: Boolean): UnsafeShuffleWriter[String, String] = {
     val conf = new SparkConf(loadDefaults = false)
@@ -55,14 +57,14 @@ object UnsafeShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
   }
 
   def writeBenchmarkWithSmallDataset(): Unit = {
-    val size = 1000
-    val benchmark = new Benchmark("UnsafeShuffleWriter with spills",
+    val size = DATA_SIZE_SMALL
+    val array = createDataInMemory(size)
+    val benchmark = new Benchmark("UnsafeShuffleWriter without spills",
       size,
       minNumIters = MIN_NUM_ITERS,
       output = output)
     addBenchmarkCase(benchmark, "small dataset without spills") { timer =>
       val writer = getWriter(false)
-      val array = createDataInMemory(1000)
       timer.startTiming()
       writer.write(array.iterator)
       timer.stopTiming()
@@ -72,12 +74,11 @@ object UnsafeShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
   }
 
   def writeBenchmarkWithSpill(): Unit = {
-    val size = PackedRecordPointer.MAXIMUM_PAGE_SIZE_BYTES/2/DEFAULT_DATA_STRING_SIZE
-    val minNumIters = 5
+    val size = DATA_SIZE_LARGE
     val tempDataFile = createDataOnDisk(size)
     val benchmark = new Benchmark("UnsafeShuffleWriter with spills",
       size,
-      minNumIters = minNumIters,
+      minNumIters = MIN_NUM_ITERS,
       output = output,
       outputPerIteration = true)
     addBenchmarkCase(benchmark, "without transferTo") { timer =>
@@ -91,7 +92,7 @@ object UnsafeShuffleWriterBenchmark extends ShuffleWriterBenchmarkBase {
       assert(tempFilesCreated.length == 7)
     }
     addBenchmarkCase(benchmark, "with transferTo") { timer =>
-      val shuffleWriter = getWriter(false)
+      val shuffleWriter = getWriter(true)
       Utils.tryWithResource(DataIterator(inputFile = tempDataFile, DEFAULT_DATA_STRING_SIZE)) {
         iterator =>
           timer.startTiming()

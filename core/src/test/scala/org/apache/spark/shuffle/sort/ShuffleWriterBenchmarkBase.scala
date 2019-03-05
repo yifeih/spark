@@ -41,7 +41,7 @@ import org.apache.spark.util.Utils
 
 abstract class ShuffleWriterBenchmarkBase extends BenchmarkBase {
 
-  private val DEFAULT_DATA_STRING_SIZE = 5
+  protected val DEFAULT_DATA_STRING_SIZE = 5
 
   // This is only used in the writer constructors, so it's ok to mock
   @Mock(answer = RETURNS_SMART_NULLS) protected var dependency:
@@ -56,6 +56,7 @@ abstract class ShuffleWriterBenchmarkBase extends BenchmarkBase {
   protected val partitioner: HashPartitioner = new HashPartitioner(10)
   protected val serializerManager: SerializerManager =
     new SerializerManager(serializer, defaultConf)
+  protected val shuffleMetrics: TaskMetrics = new TaskMetrics
 
   protected val tempFilesCreated: ArrayBuffer[File] = new ArrayBuffer[File]
   protected val filenameToFile: mutable.Map[String, File] = new mutable.HashMap[String, File]
@@ -94,7 +95,6 @@ abstract class ShuffleWriterBenchmarkBase extends BenchmarkBase {
   }
 
   protected var tempDir: File = _
-  protected var shuffleMetrics: TaskMetrics = _
 
   protected var blockManager: BlockManager = _
   protected var blockResolver: IndexShuffleBlockResolver = _
@@ -106,7 +106,6 @@ abstract class ShuffleWriterBenchmarkBase extends BenchmarkBase {
   when(dependency.partitioner).thenReturn(partitioner)
   when(dependency.serializer).thenReturn(serializer)
   when(dependency.shuffleId).thenReturn(0)
-  shuffleMetrics = new TaskMetrics
   when(taskContext.taskMetrics()).thenReturn(shuffleMetrics)
   when(rpcEnv.setupEndpoint(any[String], any[RpcEndpoint])).thenReturn(rpcEndpointRef)
 
