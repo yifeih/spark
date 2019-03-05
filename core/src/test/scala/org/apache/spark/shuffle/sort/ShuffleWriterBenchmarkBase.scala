@@ -23,7 +23,7 @@ import java.util.UUID
 import org.apache.commons.io.FileUtils
 import org.mockito.{Mock, MockitoAnnotations}
 import org.mockito.Answers.RETURNS_SMART_NULLS
-import org.mockito.Matchers.any
+import org.mockito.ArgumentMatchers.any
 import org.mockito.Mockito.when
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
