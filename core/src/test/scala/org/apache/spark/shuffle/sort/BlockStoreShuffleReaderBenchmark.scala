@@ -72,7 +72,7 @@ object BlockStoreShuffleReaderBenchmark extends BenchmarkBase {
   private val NUM_MAPS: Int = 5
   private val DEFAULT_DATA_STRING_SIZE = 5
   private val TEST_DATA_SIZE: Int = 10000000
-  private val SMALLER_DATA_SIZE: Int = 1000000
+  private val SMALLER_DATA_SIZE: Int = 2000000
   private val MIN_NUM_ITERS: Int = 10
 
   private val executorId: String = "0"
