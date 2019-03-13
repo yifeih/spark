@@ -135,8 +135,9 @@ abstract class ShuffleWriterBenchmarkBase extends BenchmarkBase {
     filenameToFile.clear()
   }
 
-  protected class DataIterator (size: Int, random: Random)
+  protected class DataIterator (size: Int)
     extends Iterator[Product2[String, String]] {
+    val random = new Random(123)
     var count = 0
     override def hasNext: Boolean = {
       count < size
@@ -149,12 +150,9 @@ abstract class ShuffleWriterBenchmarkBase extends BenchmarkBase {
     }
   }
 
-  private val random = new Random(123)
-
 
   def createDataIterator(size: Int): DataIterator = {
-    random.setSeed(123)
-    new DataIterator(size, random)
+    new DataIterator(size)
   }
 
 }
