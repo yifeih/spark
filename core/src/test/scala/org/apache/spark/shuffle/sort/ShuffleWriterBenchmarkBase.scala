@@ -144,7 +144,7 @@ abstract class ShuffleWriterBenchmarkBase extends BenchmarkBase {
 
     override def next(): Product2[String, String] = {
       count+=1
-      val string = random.nextString(DEFAULT_DATA_STRING_SIZE)
+      val string = random.alphanumeric.take(5).mkString
       (string, string)
     }
   }
