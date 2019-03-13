@@ -92,6 +92,7 @@ abstract class ShuffleWriterBenchmarkBase extends BenchmarkBase {
     null,
     1) {
     override val diskBlockManager = new TestDiskBlockManager(tempDir)
+    override val remoteBlockTempFileManager = null
   }
 
   protected var tempDir: File = _
