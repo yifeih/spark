@@ -59,6 +59,11 @@ public class DefaultMapShuffleLocations implements MapShuffleLocations, ShuffleL
     return this;
   }
 
+  @Override
+  public boolean containsLocation(ShuffleLocation location) {
+    return this.equals(location);
+  }
+
   public BlockManagerId getBlockManagerId() {
     return location;
   }

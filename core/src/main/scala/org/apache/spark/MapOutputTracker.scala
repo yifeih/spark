@@ -102,11 +102,15 @@ private class ShuffleStatus(numPartitions: Int) {
    * This is a no-op if there is no registered map output or if the registered output is from a
    * different block manager.
    */
-  def removeMapOutput(mapId: Int, bmAddress: BlockManagerId): Unit = synchronized {
-    if (mapStatuses(mapId) != null && mapStatuses(mapId).location == bmAddress) {
-      _numAvailableOutputs -= 1
-      mapStatuses(mapId) = null
-      invalidateSerializedMapOutputStatusCache()
+  def removeMapOutput(
+      mapId: Int,
+      shuffleLocation: ShuffleLocation): Unit = synchronized {
+    if (mapStatuses(mapId) != null && mapStatuses(mapId).mapShuffleLocations != null) {
+      if (mapStatuses(mapId).mapShuffleLocations.containsLocation(shuffleLocation)) {
+        _numAvailableOutputs -= 1
+        mapStatuses(mapId) = null
+        invalidateSerializedMapOutputStatusCache()
+      }
     }
   }
 
@@ -116,6 +120,17 @@ private class ShuffleStatus(numPartitions: Int) {
    */
   def removeOutputsOnHost(host: String): Unit = {
     removeOutputsByFilter(x => x.host == host)
+  }
+
+  def removeOutputsAtShuffleLocation(shuffleLocation: ShuffleLocation): Unit = {
+    for (mapId <- 0 until mapStatuses.length) {
+      if (mapStatuses(mapId) != null
+        && mapStatuses(mapId).mapShuffleLocations.containsLocation(shuffleLocation)) {
+        _numAvailableOutputs -= 1
+        mapStatuses(mapId) = null
+        invalidateSerializedMapOutputStatusCache()
+      }
+    }
   }
 
   /**
@@ -304,6 +319,8 @@ private[spark] abstract class MapOutputTracker(conf: SparkConf) extends Logging 
    */
   def unregisterShuffle(shuffleId: Int): Unit
 
+  def getExecIdForMapper(shuffleId: Int, mapId: Int): Option[String]
+
   def stop() {}
 }
 
@@ -424,10 +441,13 @@ private[spark] class MapOutputTrackerMaster(
   }
 
   /** Unregister map output information of the given shuffle, mapper and block manager */
-  def unregisterMapOutput(shuffleId: Int, mapId: Int, bmAddress: BlockManagerId) {
+  def unregisterMapOutput(
+      shuffleId: Int,
+      mapId: Int,
+      shuffleLocation: ShuffleLocation) {
     shuffleStatuses.get(shuffleId) match {
       case Some(shuffleStatus) =>
-        shuffleStatus.removeMapOutput(mapId, bmAddress)
+        shuffleStatus.removeMapOutput(mapId, shuffleLocation)
         incrementEpoch()
       case None =>
         throw new SparkException("unregisterMapOutput called for nonexistent shuffle ID")
@@ -451,6 +471,11 @@ private[spark] class MapOutputTrackerMaster(
     shuffleStatuses.remove(shuffleId).foreach { shuffleStatus =>
       shuffleStatus.invalidateSerializedMapOutputStatusCache()
     }
+  }
+
+  def removeOutputsAtShuffleLocation(location: ShuffleLocation) = {
+    shuffleStatuses.valuesIterator.foreach( _.removeOutputsAtShuffleLocation(location))
+    incrementEpoch()
   }
 
   /**
@@ -666,6 +691,18 @@ private[spark] class MapOutputTrackerMaster(
     trackerEndpoint = null
     shuffleStatuses.clear()
   }
+
+  override def getExecIdForMapper(shuffleId: Int, mapId: Int): Option[String] = {
+    shuffleStatuses.get(shuffleId) match {
+      case Some (shuffleStatus) =>
+        if (shuffleStatus.mapStatuses(mapId) != null) {
+          Some(shuffleStatus.mapStatuses(mapId).location.executorId)
+        } else {
+          None
+        }
+      case None => None
+    }
+  }
 }
 
 /**
@@ -778,6 +815,14 @@ private[spark] class MapOutputTrackerWorker(conf: SparkConf) extends MapOutputTr
         epoch = newEpoch
         mapStatuses.clear()
       }
+    }
+  }
+
+  override def getExecIdForMapper(shuffleId: Int, mapId: Int): Option[String] = {
+    mapStatuses.get(shuffleId) match {
+      case Some (shuffleStatus) =>
+        Some(shuffleStatus(mapId).location.executorId)
+      case None => None
     }
   }
 }

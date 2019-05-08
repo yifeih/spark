@@ -119,8 +119,10 @@ class MapOutputTrackerSuite extends SparkFunSuite {
 
     assert(0 == tracker.getNumCachedSerializedBroadcast)
     // As if we had two simultaneous fetch failures
-    tracker.unregisterMapOutput(10, 0, BlockManagerId("a", "hostA", 1000))
-    tracker.unregisterMapOutput(10, 0, BlockManagerId("a", "hostA", 1000))
+    tracker.unregisterMapOutput(10, 0,
+      DefaultMapShuffleLocations.get(BlockManagerId("a", "hostA", 1000)))
+    tracker.unregisterMapOutput(10, 0,
+      DefaultMapShuffleLocations.get(BlockManagerId("a", "hostA", 1000)))
 
     // The remaining reduce task might try to grab the output despite the shuffle failure;
     // this should cause it to fail, and the scheduler will ignore the failure due to the
@@ -160,7 +162,8 @@ class MapOutputTrackerSuite extends SparkFunSuite {
     assert(0 == masterTracker.getNumCachedSerializedBroadcast)
 
     val masterTrackerEpochBeforeLossOfMapOutput = masterTracker.getEpoch
-    masterTracker.unregisterMapOutput(10, 0, BlockManagerId("a", "hostA", 1000))
+    masterTracker.unregisterMapOutput(10, 0,
+      DefaultMapShuffleLocations.get(BlockManagerId("a", "hostA", 1000)))
     assert(masterTracker.getEpoch > masterTrackerEpochBeforeLossOfMapOutput)
     slaveTracker.updateEpoch(masterTracker.getEpoch)
     intercept[FetchFailedException] { slaveTracker.getMapSizesByShuffleLocation(10, 0) }

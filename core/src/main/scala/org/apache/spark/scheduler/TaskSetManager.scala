@@ -27,9 +27,10 @@ import scala.util.control.NonFatal
 
 import org.apache.spark._
 import org.apache.spark.TaskState.TaskState
-import org.apache.spark.internal.{config, Logging}
+import org.apache.spark.internal.{Logging, config}
 import org.apache.spark.internal.config._
 import org.apache.spark.scheduler.SchedulingMode._
+import org.apache.spark.shuffle.sort.DefaultMapShuffleLocations
 import org.apache.spark.util.{AccumulatorV2, Clock, LongAccumulator, SystemClock, Utils}
 import org.apache.spark.util.collection.MedianHeap
 
@@ -848,9 +849,17 @@ private[spark] class TaskSetManager(
         }
         isZombie = true
 
-        if (fetchFailed.bmAddress != null) {
+        // Fetches from remote locations shouldn't affect executor scheduling since these remote
+        // locations shouldn't be running executors, so only fetches using the default Spark
+        // implementation (DefaultMapShuffleLocations) of fetching from executor disk should result
+        // in blacklistable executors.
+        if (fetchFailed.shuffleLocation != null &&
+          fetchFailed.shuffleLocation.isInstanceOf[DefaultMapShuffleLocations]) {
+          val bmAddress = fetchFailed.shuffleLocation
+            .asInstanceOf[DefaultMapShuffleLocations]
+            .getBlockManagerId
           blacklistTracker.foreach(_.updateBlacklistForFetchFailure(
-            fetchFailed.bmAddress.host, fetchFailed.bmAddress.executorId))
+            bmAddress.host, bmAddress.executorId))
         }
 
         None

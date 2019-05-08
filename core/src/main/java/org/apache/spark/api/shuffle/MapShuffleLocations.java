@@ -36,4 +36,6 @@ public interface MapShuffleLocations extends Serializable {
    * Get the location for a given shuffle block written by this map task.
    */
   ShuffleLocation getLocationForBlock(int reduceId);
+
+  boolean containsLocation(ShuffleLocation location);
 }

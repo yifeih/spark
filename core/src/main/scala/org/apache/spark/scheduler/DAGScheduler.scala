@@ -30,10 +30,10 @@ import scala.concurrent.duration._
 import scala.language.existentials
 import scala.language.postfixOps
 import scala.util.control.NonFatal
-
 import org.apache.commons.lang3.SerializationUtils
 
 import org.apache.spark._
+import org.apache.spark.api.shuffle.ShuffleLocation
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.executor.{ExecutorMetrics, TaskMetrics}
 import org.apache.spark.internal.Logging
@@ -1335,6 +1335,7 @@ private[spark] class DAGScheduler(
   private[scheduler] def handleTaskCompletion(event: CompletionEvent) {
     val task = event.task
     val stageId = task.stageId
+    val taskInfo = event.taskInfo
 
     outputCommitCoordinator.taskCompleted(
       stageId,
@@ -1434,7 +1435,7 @@ private[spark] class DAGScheduler(
             val shuffleStage = stage.asInstanceOf[ShuffleMapStage]
             shuffleStage.pendingPartitions -= task.partitionId
             val status = event.result.asInstanceOf[MapStatus]
-            val execId = status.location.executorId
+            val execId = taskInfo.executorId
             logDebug("ShuffleMapTask finished on " + execId)
             if (failedEpoch.contains(execId) && smt.epoch <= failedEpoch(execId)) {
               logInfo(s"Ignoring possibly bogus $smt completion from executor $execId")
@@ -1478,7 +1479,7 @@ private[spark] class DAGScheduler(
             }
         }
 
-      case FetchFailed(bmAddress, shuffleId, mapId, _, failureMessage) =>
+      case FetchFailed(shuffleLocation, shuffleId, mapId, reduceId, failureMessage) =>
         val failedStage = stageIdToStage(task.stageId)
         val mapStage = shuffleIdToMapStage(shuffleId)
 
@@ -1511,7 +1512,7 @@ private[spark] class DAGScheduler(
             mapOutputTracker.unregisterAllMapOutput(shuffleId)
           } else if (mapId != -1) {
             // Mark the map whose fetch failed as broken in the map stage
-            mapOutputTracker.unregisterMapOutput(shuffleId, mapId, bmAddress)
+            mapOutputTracker.unregisterMapOutput(shuffleId, mapId, shuffleLocation)
           }
 
           if (failedStage.rdd.isBarrier()) {
@@ -1626,22 +1627,27 @@ private[spark] class DAGScheduler(
           }
 
           // TODO: mark the executor as failed only if there were lots of fetch failures on it
-          if (bmAddress != null) {
+          if (shuffleLocation != null) {
             val hostToUnregisterOutputs = if (env.blockManager.externalShuffleServiceEnabled &&
               unRegisterOutputOnHostOnFetchFailure) {
               // We had a fetch failure with the external shuffle service, so we
               // assume all shuffle data on the node is bad.
-              Some(bmAddress.host)
+              Some(shuffleLocation)
             } else {
               // Unregister shuffle data just for one executor (we don't have any
               // reason to believe shuffle data has been lost for the entire host).
               None
             }
-            removeExecutorAndUnregisterOutputs(
-              execId = bmAddress.executorId,
-              fileLost = true,
-              hostToUnregisterOutputs = hostToUnregisterOutputs,
-              maybeEpoch = Some(task.epoch))
+            mapOutputTracker.getExecIdForMapper(shuffleId, mapId) match {
+              case Some(executorId) =>
+                removeExecutorAndUnregisterOutputs(
+                  execId = executorId,
+                  fileLost = true,
+                  hostToUnregisterOutputs = hostToUnregisterOutputs,
+                  maybeEpoch = Some(task.epoch))
+              case None =>
+                logWarning(s"executorId didn't exist for shuffleId $shuffleId and mapId $mapId")
+            }
           }
         }
 
@@ -1796,7 +1802,7 @@ private[spark] class DAGScheduler(
   private def removeExecutorAndUnregisterOutputs(
       execId: String,
       fileLost: Boolean,
-      hostToUnregisterOutputs: Option[String],
+      hostToUnregisterOutputs: Option[ShuffleLocation],
       maybeEpoch: Option[Long] = None): Unit = {
     val currentEpoch = maybeEpoch.getOrElse(mapOutputTracker.getEpoch)
     if (!failedEpoch.contains(execId) || failedEpoch(execId) < currentEpoch) {
@@ -1807,7 +1813,7 @@ private[spark] class DAGScheduler(
         hostToUnregisterOutputs match {
           case Some(host) =>
             logInfo("Shuffle files lost for host: %s (epoch %d)".format(host, currentEpoch))
-            mapOutputTracker.removeOutputsOnHost(host)
+            mapOutputTracker.removeOutputsAtShuffleLocation(host)
           case None =>
             logInfo("Shuffle files lost for executor: %s (epoch %d)".format(execId, currentEpoch))
             mapOutputTracker.removeOutputsOnExecutor(execId)

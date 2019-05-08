@@ -21,7 +21,6 @@ import java.util.{Properties, UUID}
 
 import scala.collection.JavaConverters._
 import scala.collection.Map
-
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.scala.DefaultScalaModule
 import org.json4s.DefaultFormats
@@ -30,6 +29,7 @@ import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
 
 import org.apache.spark._
+import org.apache.spark.api.shuffle.ShuffleLocation
 import org.apache.spark.executor._
 import org.apache.spark.metrics.ExecutorMetricType
 import org.apache.spark.rdd.RDDOperationScope
@@ -407,8 +407,8 @@ private[spark] object JsonProtocol {
     val reason = Utils.getFormattedClassName(taskEndReason)
     val json: JObject = taskEndReason match {
       case fetchFailed: FetchFailed =>
-        val blockManagerAddress = Option(fetchFailed.bmAddress).
-          map(blockManagerIdToJson).getOrElse(JNothing)
+        val blockManagerAddress = Option(fetchFailed.shuffleLocation)
+          .map(mapper.writeValueAsString).getOrElse("None")
         ("Block Manager Address" -> blockManagerAddress) ~
         ("Shuffle ID" -> fetchFailed.shuffleId) ~
         ("Map ID" -> fetchFailed.mapId) ~
@@ -948,12 +948,13 @@ private[spark] object JsonProtocol {
       case `success` => Success
       case `resubmitted` => Resubmitted
       case `fetchFailed` =>
-        val blockManagerAddress = blockManagerIdFromJson(json \ "Block Manager Address")
+        val blockManagerAddress = shuffleLocationFromString(
+          (json \ "Block Manager Address").extract[String])
         val shuffleId = (json \ "Shuffle ID").extract[Int]
         val mapId = (json \ "Map ID").extract[Int]
         val reduceId = (json \ "Reduce ID").extract[Int]
         val message = jsonOption(json \ "Message").map(_.extract[String])
-        new FetchFailed(blockManagerAddress, shuffleId, mapId, reduceId,
+        new FetchFailed(blockManagerAddress.getOrElse(null), shuffleId, mapId, reduceId,
           message.getOrElse("Unknown reason"))
       case `exceptionFailure` =>
         val className = (json \ "Class Name").extract[String]
@@ -1005,6 +1006,13 @@ private[spark] object JsonProtocol {
     val host = (json \ "Host").extract[String].intern()
     val port = (json \ "Port").extract[Int]
     BlockManagerId(executorId, host, port)
+  }
+
+  def shuffleLocationFromString(string: String): Option[ShuffleLocation] = {
+    if (string == "None") {
+      return None
+    }
+    Some(mapper.readValue(string, classOf[ShuffleLocation]))
   }
 
   private object JOB_RESULT_FORMATTED_CLASS_NAMES {
