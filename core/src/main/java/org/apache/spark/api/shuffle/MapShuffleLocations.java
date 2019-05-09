@@ -36,4 +36,10 @@ public interface MapShuffleLocations extends Serializable {
    * Get the location for a given shuffle block written by this map task.
    */
   ShuffleLocation[] getLocationsForBlock(int reduceId);
+
+  /**
+   * Deletes a ShuffleLocation from this MapShuffleLocations. Returns true if
+   * the removal of this ShuffleLocation results in missing partitions.
+   */
+  boolean removeShuffleLocation(ShuffleLocation location);
 }

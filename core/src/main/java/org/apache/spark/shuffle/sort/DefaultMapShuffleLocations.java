@@ -27,7 +27,7 @@ import org.apache.spark.storage.BlockManagerId;
 
 import java.util.Objects;
 
-public class DefaultMapShuffleLocations implements MapShuffleLocations, ShuffleLocation {
+public class DefaultMapShuffleLocations extends ShuffleLocation implements MapShuffleLocations {
 
   /**
    * We borrow the cache size from the BlockManagerId's cache - around 1MB, which should be
@@ -59,6 +59,14 @@ public class DefaultMapShuffleLocations implements MapShuffleLocations, ShuffleL
   @Override
   public ShuffleLocation[] getLocationsForBlock(int reduceId) {
     return locationsArray;
+  }
+
+  @Override
+  public boolean removeShuffleLocation(ShuffleLocation location) {
+    if (location.host().equals(this.host()) && location.port() == this.port()) {
+      return true;
+    }
+    return false;
   }
 
   public BlockManagerId getBlockManagerId() {

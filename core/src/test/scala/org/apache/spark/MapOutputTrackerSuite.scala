@@ -325,7 +325,7 @@ class MapOutputTrackerSuite extends SparkFunSuite {
       Array(size10000, size0, size1000, size0)))
     assert(tracker.containsShuffle(10))
     assert(tracker.getMapSizesByShuffleLocation(10, 0, 4)
-      .map(x => (x._1.get, x._2)).toSeq ===
+      .map(x => (x._1(0), x._2)).toSeq ===
         Seq(
           (DefaultMapShuffleLocations.get(BlockManagerId("b", "hostB", 1000)),
               Seq((ShuffleBlockId(10, 1, 0), size10000), (ShuffleBlockId(10, 1, 2), size1000))),
