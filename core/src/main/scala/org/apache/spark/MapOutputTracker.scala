@@ -125,7 +125,7 @@ private class ShuffleStatus(numPartitions: Int) {
   def removeOutputsAtShuffleLocation(shuffleLocation: ShuffleLocation): Unit = {
     for (mapId <- 0 until mapStatuses.length) {
       if (mapStatuses(mapId) != null
-        && mapStatuses(mapId).mapShuffleLocations.containsLocation(shuffleLocation)) {
+        && mapStatuses(mapId).mapShuffleLocations.containsHost(shuffleLocation)) {
         _numAvailableOutputs -= 1
         mapStatuses(mapId) = null
         invalidateSerializedMapOutputStatusCache()
@@ -473,7 +473,7 @@ private[spark] class MapOutputTrackerMaster(
     }
   }
 
-  def removeOutputsAtShuffleLocation(location: ShuffleLocation) = {
+  def removeOutputsAtShuffleLocation(location: ShuffleLocation): Unit = {
     shuffleStatuses.valuesIterator.foreach( _.removeOutputsAtShuffleLocation(location))
     incrementEpoch()
   }

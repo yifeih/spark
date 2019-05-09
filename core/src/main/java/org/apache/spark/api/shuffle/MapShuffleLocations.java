@@ -38,4 +38,6 @@ public interface MapShuffleLocations extends Serializable {
   ShuffleLocation getLocationForBlock(int reduceId);
 
   boolean containsLocation(ShuffleLocation location);
+
+  boolean containsHost(ShuffleLocation location);
 }
