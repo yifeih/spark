@@ -45,9 +45,11 @@ public class DefaultMapShuffleLocations implements MapShuffleLocations, ShuffleL
               });
 
   private final BlockManagerId location;
+  private final ShuffleLocation[] locationsArray;
 
   public DefaultMapShuffleLocations(BlockManagerId blockManagerId) {
     this.location = blockManagerId;
+    this.locationsArray = new ShuffleLocation[] {this};
   }
 
   public static DefaultMapShuffleLocations get(BlockManagerId blockManagerId) {
@@ -55,8 +57,8 @@ public class DefaultMapShuffleLocations implements MapShuffleLocations, ShuffleL
   }
 
   @Override
-  public ShuffleLocation getLocationForBlock(int reduceId) {
-    return this;
+  public ShuffleLocation[] getLocationsForBlock(int reduceId) {
+    return locationsArray;
   }
 
   public BlockManagerId getBlockManagerId() {
@@ -72,5 +74,15 @@ public class DefaultMapShuffleLocations implements MapShuffleLocations, ShuffleL
   @Override
   public int hashCode() {
     return Objects.hashCode(location);
+  }
+
+  @Override
+  public String host() {
+    return location.host();
+  }
+
+  @Override
+  public int port() {
+    return location.port();
   }
 }
