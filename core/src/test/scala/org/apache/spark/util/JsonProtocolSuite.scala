@@ -21,7 +21,6 @@ import java.util.Properties
 
 import scala.collection.JavaConverters._
 import scala.collection.Map
-
 import org.json4s.JsonAST.{JArray, JInt, JString, JValue}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
@@ -35,6 +34,7 @@ import org.apache.spark.rdd.RDDOperationScope
 import org.apache.spark.scheduler._
 import org.apache.spark.scheduler.cluster.ExecutorInfo
 import org.apache.spark.shuffle.MetadataFetchFailedException
+import org.apache.spark.shuffle.sort.DefaultMapShuffleLocations
 import org.apache.spark.storage._
 
 class JsonProtocolSuite extends SparkFunSuite {
@@ -169,8 +169,9 @@ class JsonProtocolSuite extends SparkFunSuite {
     testJobResult(jobFailed)
 
     // TaskEndReason
-    val fetchFailed = FetchFailed(BlockManagerId("With or", "without you", 15), 17, 18, 19,
-      "Some exception")
+    val fetchFailed = FetchFailed(
+      Array(DefaultMapShuffleLocations.get(BlockManagerId("With or", "without you", 15))),
+      17, 18, 19, "Some exception")
     val fetchMetadataFailed = new MetadataFetchFailedException(17,
       19, "metadata Fetch failed exception").toTaskFailedReason
     val exceptionFailure = new ExceptionFailure(exception, Seq.empty[AccumulableInfo])
@@ -286,11 +287,13 @@ class JsonProtocolSuite extends SparkFunSuite {
 
   test("FetchFailed backwards compatibility") {
     // FetchFailed in Spark 1.1.0 does not have a "Message" property.
-    val fetchFailed = FetchFailed(BlockManagerId("With or", "without you", 15), 17, 18, 19,
-      "ignored")
+    val fetchFailed = FetchFailed(
+      Array(DefaultMapShuffleLocations.get(BlockManagerId("With or", "without you", 15))),
+      17, 18, 19, "ignored")
     val oldEvent = JsonProtocol.taskEndReasonToJson(fetchFailed)
       .removeField({ _._1 == "Message" })
-    val expectedFetchFailed = FetchFailed(BlockManagerId("With or", "without you", 15), 17, 18, 19,
+    val expectedFetchFailed = FetchFailed(
+      Array(DefaultMapShuffleLocations.get(BlockManagerId("With or", "without you", 15))), 17, 18, 19,
       "Unknown reason")
     assert(expectedFetchFailed === JsonProtocol.taskEndReasonFromJson(oldEvent))
   }
@@ -713,7 +716,7 @@ private[spark] object JsonProtocolSuite extends Assertions {
         assert(r1.shuffleId === r2.shuffleId)
         assert(r1.mapId === r2.mapId)
         assert(r1.reduceId === r2.reduceId)
-        assert(r1.bmAddress === r2.bmAddress)
+        assert(r1.shuffleLocation === r2.shuffleLocation)
         assert(r1.message === r2.message)
       case (r1: ExceptionFailure, r2: ExceptionFailure) =>
         assert(r1.className === r2.className)

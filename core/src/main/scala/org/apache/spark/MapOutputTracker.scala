@@ -28,6 +28,7 @@ import scala.concurrent.duration.Duration
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
 
+import org.apache.spark.api.java.Optional
 import org.apache.spark.api.shuffle.{MapShuffleLocations, ShuffleLocation}
 import org.apache.spark.broadcast.{Broadcast, BroadcastManager}
 import org.apache.spark.internal.Logging
@@ -102,11 +103,19 @@ private class ShuffleStatus(numPartitions: Int) {
    * This is a no-op if there is no registered map output or if the registered output is from a
    * different block manager.
    */
-  def removeMapOutput(mapId: Int, bmAddress: BlockManagerId): Unit = synchronized {
-    if (mapStatuses(mapId) != null && mapStatuses(mapId).location == bmAddress) {
-      _numAvailableOutputs -= 1
-      mapStatuses(mapId) = null
-      invalidateSerializedMapOutputStatusCache()
+  def removeMapOutput(mapId: Int, shuffleLocations: Array[ShuffleLocation]): Unit = synchronized {
+    if (mapStatuses(mapId) != null) {
+      var shouldDelete = false
+      shuffleLocations.foreach { location =>
+        shouldDelete = mapStatuses(mapId)
+          .mapShuffleLocations
+          .removeShuffleLocation(location.host(), Optional.of(location.port()))
+      }
+      if (shouldDelete) {
+        _numAvailableOutputs -= 1
+        mapStatuses(mapId) = null
+        invalidateSerializedMapOutputStatusCache()
+      }
     }
   }
 
@@ -115,7 +124,14 @@ private class ShuffleStatus(numPartitions: Int) {
    * outputs which are served by an external shuffle server (if one exists).
    */
   def removeOutputsOnHost(host: String): Unit = {
-    removeOutputsByFilter(x => x.host == host)
+    for (mapId <- 0 until mapStatuses.length) {
+      if (mapStatuses(mapId) != null &&
+        mapStatuses(mapId).mapShuffleLocations.removeShuffleLocation(host, Optional.empty())) {
+        _numAvailableOutputs -= 1
+        mapStatuses(mapId) = null
+        invalidateSerializedMapOutputStatusCache()
+      }
+    }
   }
 
   /**
@@ -424,10 +440,10 @@ private[spark] class MapOutputTrackerMaster(
   }
 
   /** Unregister map output information of the given shuffle, mapper and block manager */
-  def unregisterMapOutput(shuffleId: Int, mapId: Int, bmAddress: BlockManagerId) {
+  def unregisterMapOutput(shuffleId: Int, mapId: Int, shuffleLocations: Array[ShuffleLocation]) {
     shuffleStatuses.get(shuffleId) match {
       case Some(shuffleStatus) =>
-        shuffleStatus.removeMapOutput(mapId, bmAddress)
+        shuffleStatus.removeMapOutput(mapId, shuffleLocations)
         incrementEpoch()
       case None =>
         throw new SparkException("unregisterMapOutput called for nonexistent shuffle ID")

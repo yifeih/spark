@@ -30,7 +30,6 @@ import scala.concurrent.duration._
 import scala.language.existentials
 import scala.language.postfixOps
 import scala.util.control.NonFatal
-
 import org.apache.commons.lang3.SerializationUtils
 
 import org.apache.spark._
@@ -43,6 +42,7 @@ import org.apache.spark.network.util.JavaUtils
 import org.apache.spark.partial.{ApproximateActionListener, ApproximateEvaluator, PartialResult}
 import org.apache.spark.rdd.{DeterministicLevel, RDD, RDDCheckpointData}
 import org.apache.spark.rpc.RpcTimeout
+import org.apache.spark.shuffle.sort.io.DefaultShuffleDataIO
 import org.apache.spark.storage._
 import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
 import org.apache.spark.util._
@@ -1478,7 +1478,7 @@ private[spark] class DAGScheduler(
             }
         }
 
-      case FetchFailed(bmAddress, shuffleId, mapId, _, failureMessage) =>
+      case FetchFailed(shuffleLocations, shuffleId, mapId, _, failureMessage) =>
         val failedStage = stageIdToStage(task.stageId)
         val mapStage = shuffleIdToMapStage(shuffleId)
 
@@ -1511,7 +1511,7 @@ private[spark] class DAGScheduler(
             mapOutputTracker.unregisterAllMapOutput(shuffleId)
           } else if (mapId != -1) {
             // Mark the map whose fetch failed as broken in the map stage
-            mapOutputTracker.unregisterMapOutput(shuffleId, mapId, bmAddress)
+            mapOutputTracker.unregisterMapOutput(shuffleId, mapId, shuffleLocations)
           }
 
           if (failedStage.rdd.isBarrier()) {
@@ -1626,22 +1626,33 @@ private[spark] class DAGScheduler(
           }
 
           // TODO: mark the executor as failed only if there were lots of fetch failures on it
-          if (bmAddress != null) {
-            val hostToUnregisterOutputs = if (env.blockManager.externalShuffleServiceEnabled &&
-              unRegisterOutputOnHostOnFetchFailure) {
-              // We had a fetch failure with the external shuffle service, so we
-              // assume all shuffle data on the node is bad.
-              Some(bmAddress.host)
-            } else {
-              // Unregister shuffle data just for one executor (we don't have any
-              // reason to believe shuffle data has been lost for the entire host).
-              None
-            }
-            removeExecutorAndUnregisterOutputs(
-              execId = bmAddress.executorId,
-              fileLost = true,
-              hostToUnregisterOutputs = hostToUnregisterOutputs,
-              maybeEpoch = Some(task.epoch))
+          if (shuffleLocations != null) {
+            val toRemoveHost =
+              if (env.conf.get(config.SHUFFLE_IO_PLUGIN_CLASS) ==
+                classOf[DefaultShuffleDataIO].getName) {
+                env.blockManager.externalShuffleServiceEnabled &&
+                  unRegisterOutputOnHostOnFetchFailure
+              } else {
+                unRegisterOutputOnHostOnFetchFailure
+              }
+
+            shuffleLocations.foreach(location => {
+              val maybeExecId = location.execId()
+              if (!maybeExecId.isPresent) {
+                if (unRegisterOutputOnHostOnFetchFailure) {
+                  // If execId is not present, then it's an external location, so we remove it
+                  removeShuffleLocationHosts(shuffleLocations.map(_.host()))
+                }
+              } else if (toRemoveHost) {
+                // If execId is present, then it's an executor host
+                removeExecutorAndUnregisterOutputs(
+                  execId = maybeExecId.get(),
+                  fileLost = true,
+                  hostToUnregisterOutputs = if (toRemoveHost) Some(location.host()) else None,
+                  maybeEpoch = Some(task.epoch)
+                )
+              }
+            })
           }
         }
 
@@ -1793,6 +1804,11 @@ private[spark] class DAGScheduler(
       maybeEpoch = None)
   }
 
+  private def removeShuffleLocationHosts(hosts: Array[String]): Unit = {
+    logInfo("Removing all outputs at hosts %s".format(hosts.toString))
+    hosts.foreach(host => mapOutputTracker.removeOutputsOnHost(host))
+  }
+
   private def removeExecutorAndUnregisterOutputs(
       execId: String,
       fileLost: Boolean,
@@ -1806,7 +1822,7 @@ private[spark] class DAGScheduler(
       if (fileLost) {
         hostToUnregisterOutputs match {
           case Some(host) =>
-            logInfo("Shuffle files lost for host: %s (epoch %d)".format(host, currentEpoch))
+            logInfo("Shuffle files lost for hosts: %s (epoch %d)".format(host, currentEpoch))
             mapOutputTracker.removeOutputsOnHost(host)
           case None =>
             logInfo("Shuffle files lost for executor: %s (epoch %d)".format(execId, currentEpoch))

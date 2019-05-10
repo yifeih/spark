@@ -23,7 +23,6 @@ import java.nio.charset.StandardCharsets
 import java.util.concurrent.{CountDownLatch, Semaphore, TimeUnit}
 
 import scala.concurrent.duration._
-
 import com.google.common.io.Files
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
@@ -37,6 +36,7 @@ import org.apache.spark.internal.config._
 import org.apache.spark.internal.config.UI._
 import org.apache.spark.scheduler.{SparkListener, SparkListenerExecutorMetricsUpdate, SparkListenerJobStart, SparkListenerTaskEnd, SparkListenerTaskStart}
 import org.apache.spark.shuffle.FetchFailedException
+import org.apache.spark.shuffle.sort.DefaultMapShuffleLocations
 import org.apache.spark.util.{ThreadUtils, Utils}
 
 
@@ -689,8 +689,10 @@ class SparkContextSuite extends SparkFunSuite with LocalSparkContext with Eventu
       if (context.stageAttemptNumber == 0) {
         if (context.partitionId == 0) {
           // Make the first task in the first stage attempt fail.
-          throw new FetchFailedException(SparkEnv.get.blockManager.blockManagerId, 0, 0, 0,
-            new java.io.IOException("fake"))
+          throw new FetchFailedException(
+            shuffleLocations =
+              Array(DefaultMapShuffleLocations.get(SparkEnv.get.blockManager.blockManagerId)),
+            shuffleId =0, mapId =0, reduceId =0, cause = new java.io.IOException("fake"))
         } else {
           // Make the second task in the first stage attempt sleep to generate a zombie task
           Thread.sleep(60000)

@@ -17,6 +17,7 @@
 package org.apache.spark.api.shuffle;
 
 import org.apache.spark.annotation.Experimental;
+import org.apache.spark.api.java.Optional;
 
 import java.io.Serializable;
 
@@ -41,5 +42,5 @@ public interface MapShuffleLocations extends Serializable {
    * Deletes a ShuffleLocation from this MapShuffleLocations. Returns true if
    * the removal of this ShuffleLocation results in missing partitions.
    */
-  boolean removeShuffleLocation(ShuffleLocation location);
+  boolean removeShuffleLocation(String host, Optional<Integer> port);
 }

@@ -17,6 +17,8 @@
 
 package org.apache.spark.api.shuffle;
 
+import org.apache.spark.api.java.Optional;
+
 /**
  * Marker interface representing a location of a shuffle block. Implementations of shuffle readers
  * and writers are expected to cast this down to an implementation-specific representation.
@@ -24,6 +26,7 @@ package org.apache.spark.api.shuffle;
 public abstract class ShuffleLocation {
   public abstract String host();
   public abstract int port();
+  public abstract Optional<String> execId();
 
   @Override
   public final String toString() {

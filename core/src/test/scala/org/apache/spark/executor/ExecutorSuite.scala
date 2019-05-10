@@ -28,7 +28,6 @@ import scala.collection.mutable.ArrayBuffer
 import scala.collection.mutable.Map
 import scala.concurrent.duration._
 import scala.language.postfixOps
-
 import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.{any, eq => meq}
 import org.mockito.Mockito.{inOrder, verify, when}
@@ -49,6 +48,7 @@ import org.apache.spark.rpc.{RpcEndpointRef, RpcEnv, RpcTimeout}
 import org.apache.spark.scheduler.{FakeTask, ResultTask, Task, TaskDescription}
 import org.apache.spark.serializer.{JavaSerializer, SerializerManager}
 import org.apache.spark.shuffle.FetchFailedException
+import org.apache.spark.shuffle.sort.DefaultMapShuffleLocations
 import org.apache.spark.storage.{BlockManager, BlockManagerId}
 import org.apache.spark.util.{LongAccumulator, UninterruptibleThread}
 
@@ -438,7 +438,7 @@ class FetchFailureThrowingRDD(sc: SparkContext) extends RDD[Int](sc, Nil) {
       override def hasNext: Boolean = true
       override def next(): Int = {
         throw new FetchFailedException(
-          bmAddress = BlockManagerId("1", "hostA", 1234),
+          Array(DefaultMapShuffleLocations.get(BlockManagerId("1", "hostA", 1234))),
           shuffleId = 0,
           mapId = 0,
           reduceId = 0,

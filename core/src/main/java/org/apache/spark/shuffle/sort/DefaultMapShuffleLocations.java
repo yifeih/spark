@@ -21,6 +21,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.CacheLoader;
 import com.google.common.cache.LoadingCache;
 
+import org.apache.spark.api.java.Optional;
 import org.apache.spark.api.shuffle.MapShuffleLocations;
 import org.apache.spark.api.shuffle.ShuffleLocation;
 import org.apache.spark.storage.BlockManagerId;
@@ -62,11 +63,11 @@ public class DefaultMapShuffleLocations extends ShuffleLocation implements MapSh
   }
 
   @Override
-  public boolean removeShuffleLocation(ShuffleLocation location) {
-    if (location.host().equals(this.host()) && location.port() == this.port()) {
-      return true;
+  public boolean removeShuffleLocation(String host, Optional<Integer> port) {
+    if (port.isPresent()) {
+      return this.host().equals(host) && this.port() == port.get();
     }
-    return false;
+    return this.host().equals(host);
   }
 
   public BlockManagerId getBlockManagerId() {
@@ -92,5 +93,10 @@ public class DefaultMapShuffleLocations extends ShuffleLocation implements MapSh
   @Override
   public int port() {
     return location.port();
+  }
+
+  @Override
+  public Optional<String> execId() {
+    return Optional.of(location.executorId());
   }
 }
