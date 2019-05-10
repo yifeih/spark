@@ -1637,22 +1637,27 @@ private[spark] class DAGScheduler(
               }
 
             shuffleLocations.foreach(location => {
+              var epochAllowsRemoval = false
+              // if there's an executor id, remove it
               val maybeExecId = location.execId()
-              if (!maybeExecId.isPresent) {
-                if (unRegisterOutputOnHostOnFetchFailure) {
-                  // If execId is not present, then it's an external location, so we remove it
-                  removeShuffleLocationHosts(shuffleLocations.map(_.host()))
+              val currentEpoch = Some(task.epoch).getOrElse(mapOutputTracker.getEpoch)
+              if (maybeExecId.isPresent) {
+                val execId = maybeExecId.get()
+                if (!failedEpoch.contains(execId) || failedEpoch(execId) < currentEpoch) {
+                  failedEpoch(execId) = currentEpoch
+                  epochAllowsRemoval = true
+                  blockManagerMaster.removeExecutor(execId)
+                  mapOutputTracker.removeOutputsOnExecutor(execId)
                 }
-              } else if (toRemoveHost) {
-                // If execId is present, then it's an executor host
-                removeExecutorAndUnregisterOutputs(
-                  execId = maybeExecId.get(),
-                  fileLost = true,
-                  hostToUnregisterOutputs = if (toRemoveHost) Some(location.host()) else None,
-                  maybeEpoch = Some(task.epoch)
-                )
+              } else {
+                epochAllowsRemoval = true
+              }
+
+              if (toRemoveHost && epochAllowsRemoval) {
+                mapOutputTracker.removeOutputsOnHost(location.host())
               }
             })
+            clearCacheLocs()
           }
         }
 
