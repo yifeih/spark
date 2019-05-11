@@ -24,6 +24,7 @@ import scala.annotation.meta.param
 import scala.collection.mutable.{ArrayBuffer, HashMap, HashSet, Map}
 import scala.language.reflectiveCalls
 import scala.util.control.NonFatal
+
 import org.scalatest.concurrent.{Signaler, ThreadSignaler, TimeLimits}
 import org.scalatest.time.SpanSugar._
 
@@ -474,8 +475,8 @@ class DAGSchedulerSuite extends SparkFunSuite with LocalSparkContext with TimeLi
 
     // reduce stage fails with a fetch failure from one host
     complete(taskSets(2), Seq(
-      (FetchFailed(makeShuffleLocationArray("exec-hostA2", "hostA", 12345), firstShuffleId, 0, 0, "ignored"),
-        null)
+      (FetchFailed(makeShuffleLocationArray("exec-hostA2", "hostA", 12345),
+        firstShuffleId, 0, 0, "ignored"), null)
     ))
 
     // Here is the main assertion -- make sure that we de-register
@@ -839,7 +840,8 @@ class DAGSchedulerSuite extends SparkFunSuite with LocalSparkContext with TimeLi
     val stageAttempt = taskSets.last
     checkStageId(stageId, attemptIdx, stageAttempt)
     complete(stageAttempt, stageAttempt.tasks.zipWithIndex.map { case (task, idx) =>
-      (FetchFailed(makeShuffleLocationArray("hostA"), shuffleDep.shuffleId, 0, idx, "ignored"), null)
+      (FetchFailed(makeShuffleLocationArray("hostA"),
+        shuffleDep.shuffleId, 0, idx, "ignored"), null)
     }.toSeq)
   }
 
@@ -1750,7 +1752,8 @@ class DAGSchedulerSuite extends SparkFunSuite with LocalSparkContext with TimeLi
     // lets say there is a fetch failure in this task set, which makes us go back and
     // run stage 0, attempt 1
     complete(taskSets(1), Seq(
-      (FetchFailed(makeShuffleLocationArray("hostA"), shuffleDep1.shuffleId, 0, 0, "ignored"), null)))
+      (FetchFailed(makeShuffleLocationArray("hostA"),
+        shuffleDep1.shuffleId, 0, 0, "ignored"), null)))
     scheduler.resubmitFailedStages()
 
     // stage 0, attempt 1 should have the properties of job2
@@ -1831,7 +1834,8 @@ class DAGSchedulerSuite extends SparkFunSuite with LocalSparkContext with TimeLi
       (Success, makeMapStatus("hostC", 1))))
     // fail the third stage because hostA went down
     complete(taskSets(2), Seq(
-      (FetchFailed(makeShuffleLocationArray("hostA"), shuffleDepTwo.shuffleId, 0, 0, "ignored"), null)))
+      (FetchFailed(makeShuffleLocationArray("hostA"),
+        shuffleDepTwo.shuffleId, 0, 0, "ignored"), null)))
     // TODO assert this:
     // blockManagerMaster.removeExecutor("exec-hostA")
     // have DAGScheduler try again
@@ -1862,7 +1866,8 @@ class DAGSchedulerSuite extends SparkFunSuite with LocalSparkContext with TimeLi
       (Success, makeMapStatus("hostB", 1))))
     // pretend stage 2 failed because hostA went down
     complete(taskSets(2), Seq(
-      (FetchFailed(makeShuffleLocationArray("hostA"), shuffleDepTwo.shuffleId, 0, 0, "ignored"), null)))
+      (FetchFailed(makeShuffleLocationArray("hostA"),
+        shuffleDepTwo.shuffleId, 0, 0, "ignored"), null)))
     // TODO assert this:
     // blockManagerMaster.removeExecutor("exec-hostA")
     // DAGScheduler should notice the cached copy of the second shuffle and try to get it rerun.

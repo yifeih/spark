@@ -21,6 +21,7 @@ import java.util.Properties
 
 import scala.collection.JavaConverters._
 import scala.collection.Map
+
 import org.json4s.JsonAST.{JArray, JInt, JString, JValue}
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
@@ -293,8 +294,8 @@ class JsonProtocolSuite extends SparkFunSuite {
     val oldEvent = JsonProtocol.taskEndReasonToJson(fetchFailed)
       .removeField({ _._1 == "Message" })
     val expectedFetchFailed = FetchFailed(
-      Array(DefaultMapShuffleLocations.get(BlockManagerId("With or", "without you", 15))), 17, 18, 19,
-      "Unknown reason")
+      Array(DefaultMapShuffleLocations.get(BlockManagerId("With or", "without you", 15))),
+      17, 18, 19, "Unknown reason")
     assert(expectedFetchFailed === JsonProtocol.taskEndReasonFromJson(oldEvent))
   }
 
